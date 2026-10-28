@@ -365,6 +365,7 @@
 
     <script>
 const socket = io();
+ let myRole = null;
         const canvas = document.getElementById('gameCanvas');
         const ctx = canvas.getContext('2d');
         const shakeLayer = document.getElementById('screen-shake-layer');
@@ -432,6 +433,54 @@ const socket = io();
 
         window.addEventListener('keydown', (e) => {
             if (!gameActive) return;
+
+            // Trong trận online, mỗi máy chỉ điều khiển nhân vật được gán cho mình.
+            // Người chơi 2 cũng dùng WASD + O/P trên máy riêng của họ.
+            if (onlineGameActive && myPlayerRole === 2) {
+                const k = e.key.toLowerCase();
+                if (['w','a','s','d','o','p'].includes(k)) e.preventDefault();
+                if (k === 'a') keys.a = true;
+                else if (k === 'd') keys.d = true;
+                else if (k === 'w' && !keys.w) {
+                    keys.w = true;
+                    if (player2.health > 0 && player2.stunnedTimer === 0) {
+                        const canJump = player2.position.y >= GROUND_Y - player2.height - 2 || platforms.some(p => Math.abs(player2.position.y + player2.height - p.y) < 6 && player2.position.x + player2.width > p.x && player2.position.x < p.x + p.w);
+                        if (canJump) player2.velocity.y = -15;
+                        const now = Date.now();
+                        p2UpPressTimes.push(now);
+                        p2UpPressTimes = p2UpPressTimes.filter(t => now - t < 500);
+                        if (p2UpPressTimes.length >= 2 && player2.charTypeIndex === 4) {
+                            p2UpPressTimes = [];
+                            player2.tryCraftGun();
+                        }
+                    }
+                } else if (k === 's' && !keys.s) {
+                    keys.s = true;
+                    if (player2.health > 0 && player2.stunnedTimer === 0) {
+                        const now = Date.now();
+                        p2DownPressTimes.push(now);
+                        p2DownPressTimes = p2DownPressTimes.filter(t => now - t < 500);
+                        if (player2.charTypeIndex === 4) {
+                            if (p2DownPressTimes.length >= 3) { p2DownPressTimes = []; player2.tryAscend(); }
+                            else if (p2DownPressTimes.length === 2) player2.tryDeployNetTrap();
+                        } else if (player2.charTypeIndex === 3 && p2DownPressTimes.length >= 2) {
+                            p2DownPressTimes = []; player2.tryVampireSkill();
+                        } else if (player2.charTypeIndex === 5 && p2DownPressTimes.length >= 2) {
+                            p2DownPressTimes = []; player2.tryAfterimageSkill();
+                        }
+                    }
+                } else if ((k === 'o' || k === 'p') && player2.health > 0 && player2.stunnedTimer === 0) {
+                    if (player2.hasWeapon === 'Gun' && k === 'o') player2.shoot();
+                    else player2.attack(k === 'p' ? 'kick' : 'punch');
+                }
+                return;
+            }
+
+            // Người chơi 1 không được tác động tới bộ phím của P2 trên máy của mình.
+            if (onlineGameActive && myPlayerRole === 1 && ['ArrowLeft','ArrowRight','ArrowUp','ArrowDown','-','='].includes(e.key)) {
+                e.preventDefault();
+                return;
+            }
             switch(e.key) {
                 case 'a': case 'A': keys.a = true; break;
                 case 'd': case 'D': keys.d = true; break;
@@ -554,6 +603,14 @@ const socket = io();
         });
 
         window.addEventListener('keyup', (e) => {
+            if (onlineGameActive && myPlayerRole === 2) {
+                const k = e.key.toLowerCase();
+                if (k === 'a') keys.a = false;
+                else if (k === 'd') keys.d = false;
+                else if (k === 'w') keys.w = false;
+                else if (k === 's') keys.s = false;
+                return;
+            }
             switch(e.key) {
                 case 'a': case 'A': keys.a = false; break;
                 case 'd': case 'D': keys.d = false; break;
@@ -565,6 +622,14 @@ const socket = io();
                 case 'ArrowDown': keys.ArrowDown = false; break;
             }
         });
+
+
+function clearHeldKeys() {
+    keys.a = keys.d = keys.w = keys.s = false;
+    keys.ArrowLeft = keys.ArrowRight = keys.ArrowUp = keys.ArrowDown = false;
+}
+window.addEventListener('blur', clearHeldKeys);
+document.addEventListener('visibilitychange', () => { if (document.hidden) clearHeldKeys(); });
 
         class Particle {
             constructor(x, y, color) {
@@ -1915,10 +1980,10 @@ function animate() {
         if (player2.health > 0 && player2.stunnedTimer === 0) {
             let p2MoveRate = player2.bonusMovementSpeedRate;
             let p2Speed = 4 * (1 + p2MoveRate) * (player2.speedBoostTimer > 0 ? 1.5 : 1.0);
-            if (keys.ArrowLeft || keys.a) { player2.velocity.x = -p2Speed; player2.facing = 'left'; }
-            else if (keys.ArrowRight || keys.d) { player2.velocity.x = p2Speed; player2.facing = 'right'; }
+            if ((onlineGameActive && myPlayerRole === 2 && keys.a) || (!onlineGameActive && (keys.ArrowLeft || keys.a))) { player2.velocity.x = -p2Speed; player2.facing = 'left'; }
+            else if ((onlineGameActive && myPlayerRole === 2 && keys.d) || (!onlineGameActive && (keys.ArrowRight || keys.d))) { player2.velocity.x = p2Speed; player2.facing = 'right'; }
 
-            player2.isBlocking = (player2.charTypeIndex === 5) ? false : (keys.ArrowDown || keys.s);
+            player2.isBlocking = (player2.charTypeIndex === 5) ? false : (onlineGameActive && myPlayerRole === 2 ? keys.s : (keys.ArrowDown || keys.s));
         }
         player2.update();
 
@@ -2106,43 +2171,43 @@ function changeRoomMode(subMode) {
 
 // Nhận lệnh bắt đầu trận đấu kèm chế độ từ Server
 socket.on('game_started', (data) => {
+    onlineGameActive = true;
     document.getElementById('room-lobby-overlay').style.display = 'none';
 
-    if (data.room.players[0] && data.room.players[0].id === socket.id) {
-        myPlayerRole = 1;
+    // Xác định vai trò dựa trên code có sẵn của bạn
+    if (data.p1SocketId === socket.id || (data.room.players[0] && data.room.players[0].id === socket.id)) {
+        myPlayerRole = 1; // Máy này chỉ điều khiển Người chơi 1
     } else {
-        myPlayerRole = 2;
+        myPlayerRole = 2; // Máy này chỉ điều khiển Người chơi 2
     }
+    keys.a = keys.d = keys.w = keys.s = false;
+    keys.ArrowLeft = keys.ArrowRight = keys.ArrowUp = keys.ArrowDown = false;
+
+    console.log("Vai trò của tôi trong trận này là Player:", myPlayerRole);
 
     // Khởi động trận đấu đúng với chế độ mà Host đã chọn
     startGame(data.subMode || 'pvp_solo');
 });
 
- async function handleRegister() {
+// Ví dụ xử lý Đăng ký ở Frontend
+async function handleRegister() {
     const username = document.getElementById('auth-username').value.trim();
-    const password = document.getElementById('auth-password').value.trim();
-    const msgEl = document.getElementById('auth-message');
-
-    if (!username || !password) {
-        msgEl.innerText = 'Vui lòng nhập đầy đủ tài khoản & mật khẩu!';
-        return;
-    }
+    const password = document.getElementById('auth-password').value;
 
     try {
-        const res = await fetch('/api/register', {
+        const response = await fetch('/api/register', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ username, password })
         });
-        const data = await res.json();
-        msgEl.innerText = data.message;
-        if (data.success) {
-            msgEl.style.color = '#2ecc71';
-        }
-    } catch (err) {
-        msgEl.innerText = 'Lỗi kết nối tới máy chủ!';
+        const data = await response.json();
+        const msgEl = document.getElementById('auth-message');
+        msgEl.innerText = data.message || (data.success ? 'Đăng ký thành công!' : 'Đăng ký thất bại.');
+    } catch (error) {
+        document.getElementById('auth-message').innerText = 'Không kết nối được máy chủ. Hãy thử lại.';
     }
 }
+
 
 async function handleLogin() {
     const username = document.getElementById('auth-username').value.trim();
@@ -2175,6 +2240,7 @@ async function handleLogin() {
 
 let currentUser = '';
 let currentRoomData = null;
+let onlineGameActive = false;
 // --- ĐỒNG BỘ NÂNG CAO MULTIPLAYER SOCKET.IO ---
 
 // 1. Đồng bộ Đạn bắn (Bullets)
@@ -2239,33 +2305,22 @@ socket.on('sync_spawn_box', (data) => {
         currentShieldBox.type = data.type;
     }
 });
-// Ghi đè lại hàm handleLogin để sau khi đăng nhập thành công sẽ mở Sảnh Phòng
-const originalHandleLogin = handleLogin;
+// Sau khi đăng nhập thành công, mở sảnh phòng online.
 handleLogin = async function() {
     const username = document.getElementById('auth-username').value.trim();
-    const password = document.getElementById('auth-password').value.trim();
+    const password = document.getElementById('auth-password').value;
     const msgEl = document.getElementById('auth-message');
-
-    if (!username || !password) {
-        msgEl.innerText = 'Vui lòng nhập đầy đủ tài khoản & mật khẩu!';
-        return;
-    }
-
+    if (!username || !password) { msgEl.innerText = 'Vui lòng nhập đầy đủ tài khoản & mật khẩu!'; return; }
     try {
         const res = await fetch('/api/login', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ username, password })
         });
         const data = await res.json();
-        if (data.success) {
-            currentUser = data.username;
-            document.getElementById('auth-overlay').style.display = 'none';
-            // Đăng nhập thành công -> Hiển thị sảnh chọn phòng Xarena
-            document.getElementById('room-lobby-overlay').style.display = 'flex';
-        } else {
-            msgEl.innerText = data.message;
-        }
+        if (!res.ok || !data.success) { msgEl.innerText = data.message || 'Đăng nhập thất bại.'; return; }
+        currentUser = data.username;
+        document.getElementById('auth-overlay').style.display = 'none';
+        document.getElementById('room-lobby-overlay').style.display = 'flex';
     } catch (err) {
         msgEl.innerText = 'Lỗi kết nối tới máy chủ!';
     }
@@ -2364,6 +2419,8 @@ function hostStartGame() {
 }
 
 function leaveRoom() {
+    onlineGameActive = false;
+    clearHeldKeys();
     socket.emit('leave_room');
     document.getElementById('lobby-room-name').innerText = 'Chưa vào phòng';
     document.getElementById('lobby-player-list').innerHTML = '';
@@ -2387,15 +2444,12 @@ socket.on('remote_player_move', (data) => {
 
 // 2. Gửi hành động tấn công khi bấm phím
 window.addEventListener('keydown', (e) => {
-    if (!gameActive) return;
-
-    if (myPlayerRole === 1 && (e.key === 'o' || e.key === 'O' || e.key === 'p' || e.key === 'P')) {
-        let type = (e.key === 'p' || e.key === 'P') ? 'kick' : 'punch';
-        socket.emit('player_action', { type: type, facing: player1.facing });
-    } else if (myPlayerRole === 2 && (e.key === '-' || e.key === '=')) {
-        let type = (e.key === '=') ? 'kick' : 'punch';
-        socket.emit('player_action', { type: type, facing: player2.facing });
-    }
+    if (!gameActive || !onlineGameActive) return;
+    const k = e.key.toLowerCase();
+    if (k !== 'o' && k !== 'p') return;
+    const fighter = myPlayerRole === 1 ? player1 : player2;
+    if (!fighter || fighter.health <= 0 || fighter.stunnedTimer > 0) return;
+    socket.emit('player_action', { type: k === 'p' ? 'kick' : 'punch', facing: fighter.facing });
 });
 
 // 3. Nhận hành động tấn công từ đối phương
