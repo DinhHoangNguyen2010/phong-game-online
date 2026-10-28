@@ -2,9 +2,9 @@
   "name": "phong-game-online",
   "version": "1.0.0",
   "description": "Game đối kháng trực tuyến",
-  "main": "server_4.js",
+  "main": "server.js",
   "scripts": {
-    "start": "node server_4.js",
+    "start": "node server.js",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "keywords": [],

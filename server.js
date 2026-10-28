@@ -9,7 +9,8 @@ const server = http.createServer(app);
 const io = new Server(server);
 
 app.use(express.json());
-app.use(express.static('public'));
+app.get('/', (req, res) => res.sendFile(require('path').join(__dirname, 'index.html')));
+app.use('/public', express.static(require('path').join(__dirname, 'public')));
 
 // Kết nối DB MongoDB
 const mongoURI = process.env.MONGO_URI || 'mongodb://localhost:27017/phonggame';
@@ -26,22 +27,30 @@ const User = mongoose.model('User', userSchema);
 // API Đăng ký / Đăng nhập
 app.post('/api/register', async (req, res) => {
     try {
-        const { username, password } = req.body;
-        if (await User.findOne({ username })) {
+        const { username, password } = req.body || {};
+        if (typeof username !== 'string' || typeof password !== 'string' || username.trim().length < 3 || password.length < 4) {
+            return res.status(400).json({ success: false, message: 'Tên tài khoản tối thiểu 3 ký tự, mật khẩu tối thiểu 4 ký tự!' });
+        }
+        const cleanUsername = username.trim();
+        if (await User.findOne({ username: cleanUsername })) {
             return res.status(400).json({ success: false, message: 'Tài khoản đã tồn tại!' });
         }
         const hashedPassword = await bcrypt.hash(password, 10);
-        await new User({ username, password: hashedPassword }).save();
+        await new User({ username: cleanUsername, password: hashedPassword }).save();
         res.json({ success: true, message: 'Đăng ký thành công!' });
     } catch (err) {
+        if (err && err.code === 11000) return res.status(400).json({ success: false, message: 'Tài khoản đã tồn tại!' });
         res.status(500).json({ success: false, message: 'Lỗi server' });
     }
 });
 
 app.post('/api/login', async (req, res) => {
     try {
-        const { username, password } = req.body;
-        const user = await User.findOne({ username });
+        const { username, password } = req.body || {};
+        if (typeof username !== 'string' || typeof password !== 'string') {
+            return res.status(400).json({ success: false, message: 'Vui lòng nhập tài khoản và mật khẩu!' });
+        }
+        const user = await User.findOne({ username: username.trim() });
         if (!user || !(await bcrypt.compare(password, user.password))) {
             return res.status(400).json({ success: false, message: 'Sai thông tin đăng nhập!' });
         }
@@ -62,23 +71,36 @@ io.on('connection', (socket) => {
 
     // 1. Tạo phòng mới
     socket.on('create_room', ({ roomName, maxPlayers, username }) => {
-        const roomId = 'room_' + Math.random().toString(36).substr(2, 9);
-        rooms[roomId] = {
-            id: roomId,
-            name: roomName || `Phòng của ${username}`,
-            host: username,
-            maxPlayers: maxPlayers || 2,
-            players: [{ id: socket.id, username, isReady: true, charIndex: 0 }],
-            status: 'waiting' // waiting | playing
-        };
+    const roomId = 'room_' + Math.random().toString(36).substr(2, 9);
+    rooms[roomId] = {
+        id: roomId,
+        name: roomName || `Phòng của ${username}`,
+        host: username,
+        maxPlayers: maxPlayers || 2,
+        players: [{ id: socket.id, username, isReady: true, charIndex: 0 }],
+        status: 'waiting',
+        subMode: 'pvp_solo' // <--- THÊM DÒNG NÀY VÀO ĐỂ LƯU CHẾ ĐỘ MẶC ĐỊNH
+    };
 
-        socket.join(roomId);
-        socket.roomId = roomId;
+    socket.join(roomId);
+    socket.roomId = roomId;
+    socket.username = username;
 
-        socket.emit('room_joined', rooms[roomId]);
-        io.emit('room_list_update', Object.values(rooms));
-    });
-
+    socket.emit('room_joined', rooms[roomId]);
+    io.emit('room_list_update', Object.values(rooms));
+});
+// Thêm sự kiện này để Host thay đổi chế độ chơi trong phòng
+socket.on('update_room_mode', ({ subMode }) => {
+    const room = rooms[socket.roomId];
+    if (!room) return;
+    
+    const player = room.players.find(p => p.id === socket.id);
+    // Chỉ có Chủ phòng (Host) mới có quyền đổi chế độ chơi
+    if (player && player.username === room.host && ['pvp_solo', 'pvp_coop'].includes(subMode)) {
+        room.subMode = subMode;
+        io.to(room.id).emit('room_update', room); // Gửi thông tin mới cho tất cả người chơi trong phòng
+    }
+});
     // 2. Tham gia phòng (Join Room)
     socket.on('join_room', ({ roomId, username }) => {
         const room = rooms[roomId];
@@ -89,6 +111,7 @@ io.on('connection', (socket) => {
         room.players.push({ id: socket.id, username, isReady: false, charIndex: 1 });
         socket.join(roomId);
         socket.roomId = roomId;
+        socket.username = username;
 
         socket.emit('room_joined', room);
         io.to(roomId).emit('room_update', room);
@@ -107,22 +130,26 @@ io.on('connection', (socket) => {
     });
 
     // 4. Host bắt đầu trận đấu
-    socket.on('start_game', () => {
-        const room = rooms[socket.roomId];
-        if (!room) return;
-        const player = room.players.find(p => p.id === socket.id);
-        if (player && player.username === room.host) {
-            room.status = 'playing';
-            
-            io.to(room.id).emit('game_started', {
-                room: room,
-                p1SocketId: room.players[0].id,
-                p2SocketId: room.players[1] ? room.players[1].id : null
-            });
-            
-            io.emit('room_list_update', Object.values(rooms));
-        }
-    });
+socket.on('start_game', () => {
+    const room = rooms[socket.roomId];
+    if (!room) return;
+    
+    const player = room.players.find(p => p.id === socket.id);
+    // Chỉ Host mới có quyền bấm bắt đầu game
+    if (player && player.username === room.host && room.players.length >= 2 && room.players.every(p => p.username === room.host || p.isReady)) {
+        room.status = 'playing';
+        
+        // <--- BỔ SUNG subMode: room.subMode VÀO ĐÂY ĐỂ TRUYỀN XUỐNG MÁY KHÁCH
+        io.to(room.id).emit('game_started', {
+            room: room,
+            subMode: room.subMode, 
+            p1SocketId: room.players[0].id,
+            p2SocketId: room.players[1] ? room.players[1].id : null
+        });
+        
+        io.emit('room_list_update', Object.values(rooms));
+    }
+});
 
     // ==========================================
     // 5. ĐỒNG BỘ TRONG TRẬN ĐẤU (IN-GAME SYNC)
