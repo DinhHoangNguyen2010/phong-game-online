@@ -12,9 +12,10 @@ const io = new Server(server);
 
 app.use(express.json());
 
-// Phục vụ giao diện game tại trang chủ.
+// ================= 1. CẤU HÌNH PHỤC VỤ FILE TĨNH & GIAO DIỆN =================
 const publicDir = path.join(__dirname, 'public');
 const indexPath = path.join(publicDir, 'index.html');
+
 app.get('/', (req, res) => {
     if (!fs.existsSync(indexPath)) {
         console.error('Không tìm thấy index.html tại:', indexPath);
@@ -25,13 +26,9 @@ app.get('/', (req, res) => {
 
 app.get('/healthz', (req, res) => res.status(200).send('OK'));
 app.use(express.static(publicDir));
-// Hỗ trợ cả đường dẫn /public/... nếu giao diện đang dùng đường dẫn kiểu cũ.
 app.use('/public', express.static(publicDir));
 
-// Báo lỗi rõ ràng thay vì trang Not Found trống nếu URL không tồn tại.
-app.use((req, res) => res.status(404).send(`Not Found: ${req.method} ${req.originalUrl}`));
-
-// Kết nối DB MongoDB
+// ================= 2. KẾT NỐI DATABASE MONGODB & ĐỊNH NGHĨA MODEL =================
 const mongoURI = process.env.MONGO_URI || 'mongodb://localhost:27017/phonggame';
 mongoose.connect(mongoURI)
     .then(() => console.log('Đã kết nối MongoDB!'))
@@ -43,7 +40,7 @@ const userSchema = new mongoose.Schema({
 });
 const User = mongoose.model('User', userSchema);
 
-// API Đăng ký / Đăng nhập
+// ================= 3. ĐỊNH NGHĨA CÁC ROUTE API (ĐĂNG KÝ / ĐĂNG NHẬP) =================
 app.post('/api/register', async (req, res) => {
     try {
         const { username, password } = req.body || {};
@@ -79,7 +76,10 @@ app.post('/api/login', async (req, res) => {
     }
 });
 
-// ================= HỆ THỐNG CƠ CHẾ PHÒNG & SOCKET.IO =================
+// ================= 4. MIDDLEWARE BÁO LỖI 404 (ĐẶT SAU CÁC ROUTE HỢP LỆ) =================
+app.use((req, res) => res.status(404).send(`Not Found: ${req.method} ${req.originalUrl}`));
+
+// ================= 5. HỆ THỐNG CƠ CHẾ PHÒNG & SOCKET.IO =================
 const rooms = {}; // Lưu trữ danh sách phòng đang hoạt động
 
 io.on('connection', (socket) => {
@@ -90,36 +90,38 @@ io.on('connection', (socket) => {
 
     // 1. Tạo phòng mới
     socket.on('create_room', ({ roomName, maxPlayers, username }) => {
-    const roomId = 'room_' + Math.random().toString(36).substr(2, 9);
-    rooms[roomId] = {
-        id: roomId,
-        name: roomName || `Phòng của ${username}`,
-        host: username,
-        maxPlayers: maxPlayers || 2,
-        players: [{ id: socket.id, username, isReady: true, charIndex: 0 }],
-        status: 'waiting',
-        subMode: 'pvp_solo' // <--- THÊM DÒNG NÀY VÀO ĐỂ LƯU CHẾ ĐỘ MẶC ĐỊNH
-    };
+        const roomId = 'room_' + Math.random().toString(36).substr(2, 9);
+        rooms[roomId] = {
+            id: roomId,
+            name: roomName || `Phòng của ${username}`,
+            host: username,
+            maxPlayers: maxPlayers || 2,
+            players: [{ id: socket.id, username, isReady: true, charIndex: 0 }],
+            status: 'waiting',
+            subMode: 'pvp_solo' // Lưu chế độ mặc định
+        };
 
-    socket.join(roomId);
-    socket.roomId = roomId;
-    socket.username = username;
+        socket.join(roomId);
+        socket.roomId = roomId;
+        socket.username = username;
 
-    socket.emit('room_joined', rooms[roomId]);
-    io.emit('room_list_update', Object.values(rooms));
-});
-// Thêm sự kiện này để Host thay đổi chế độ chơi trong phòng
-socket.on('update_room_mode', ({ subMode }) => {
-    const room = rooms[socket.roomId];
-    if (!room) return;
-    
-    const player = room.players.find(p => p.id === socket.id);
-    // Chỉ có Chủ phòng (Host) mới có quyền đổi chế độ chơi
-    if (player && player.username === room.host && ['pvp_solo', 'pvp_coop'].includes(subMode)) {
-        room.subMode = subMode;
-        io.to(room.id).emit('room_update', room); // Gửi thông tin mới cho tất cả người chơi trong phòng
-    }
-});
+        socket.emit('room_joined', rooms[roomId]);
+        io.emit('room_list_update', Object.values(rooms));
+    });
+
+    // Thể hiện Host thay đổi chế độ chơi trong phòng
+    socket.on('update_room_mode', ({ subMode }) => {
+        const room = rooms[socket.roomId];
+        if (!room) return;
+        
+        const player = room.players.find(p => p.id === socket.id);
+        // Chỉ có Chủ phòng (Host) mới có quyền đổi chế độ chơi
+        if (player && player.username === room.host && ['pvp_solo', 'pvp_coop'].includes(subMode)) {
+            room.subMode = subMode;
+            io.to(room.id).emit('room_update', room); // Gửi thông tin mới cho tất cả người chơi trong phòng
+        }
+    });
+
     // 2. Tham gia phòng (Join Room)
     socket.on('join_room', ({ roomId, username }) => {
         const room = rooms[roomId];
@@ -149,26 +151,26 @@ socket.on('update_room_mode', ({ subMode }) => {
     });
 
     // 4. Host bắt đầu trận đấu
-socket.on('start_game', () => {
-    const room = rooms[socket.roomId];
-    if (!room) return;
-    
-    const player = room.players.find(p => p.id === socket.id);
-    // Chỉ Host mới có quyền bấm bắt đầu game
-    if (player && player.username === room.host && room.players.length >= 2 && room.players.every(p => p.username === room.host || p.isReady)) {
-        room.status = 'playing';
+    socket.on('start_game', () => {
+        const room = rooms[socket.roomId];
+        if (!room) return;
         
-        // <--- BỔ SUNG subMode: room.subMode VÀO ĐÂY ĐỂ TRUYỀN XUỐNG MÁY KHÁCH
-        io.to(room.id).emit('game_started', {
-            room: room,
-            subMode: room.subMode, 
-            p1SocketId: room.players[0].id,
-            p2SocketId: room.players[1] ? room.players[1].id : null
-        });
-        
-        io.emit('room_list_update', Object.values(rooms));
-    }
-});
+        const player = room.players.find(p => p.id === socket.id);
+        // Chỉ Host mới có quyền bấm bắt đầu game
+        if (player && player.username === room.host && room.players.length >= 2 && room.players.every(p => p.username === room.host || p.isReady)) {
+            room.status = 'playing';
+            
+            // Truyền subMode xuống phía client
+            io.to(room.id).emit('game_started', {
+                room: room,
+                subMode: room.subMode, 
+                p1SocketId: room.players[0].id,
+                p2SocketId: room.players[1] ? room.players[1].id : null
+            });
+            
+            io.emit('room_list_update', Object.values(rooms));
+        }
+    });
 
     // ==========================================
     // 5. ĐỒNG BỘ TRONG TRẬN ĐẤU (IN-GAME SYNC)
@@ -254,6 +256,9 @@ function handleLeaveRoom(socket) {
     io.emit('room_list_update', Object.values(rooms));
 }
 
+// ==========================================
+// 6. KÍCH HOẠT SERVER KHỞI CHẠY
+// ==========================================
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, '0.0.0.0', () => {
     console.log(`Server đang chạy trên cổng ${PORT}`);
