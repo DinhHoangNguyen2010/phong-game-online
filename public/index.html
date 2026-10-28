@@ -137,6 +137,14 @@
         <div id="room-detail" style="flex: 1; background: #16213e; border: 2px solid #0f3460; border-radius: 8px; padding: 15px; display: flex; flex-direction: column; justify-content: space-between;">
             <div>
                 <h3 id="lobby-room-name" style="color: #4361ee; margin-top: 0;">Chưa vào phòng</h3>
+<div id="room-mode-container" style="margin-top: 10px; display: none;">
+    <label style="font-size: 12px; color: #f9d423; font-weight: bold;">CHẾ ĐỘ TRẬN ĐẤU:</label>
+    <select id="select-room-mode" onchange="changeRoomMode(this.value)" style="width: 100%; padding: 6px; margin-top: 4px; background: #0f3460; color: #fff; border: 1px solid #4361ee; border-radius: 4px;">
+        <option value="pvp_solo">SOLO 1 VS 1 THUẦN TÚY</option>
+        <option value="pvp_coop">VƯỢT MÀN CÙNG NHAU (CO-OP)</option>
+    </select>
+</div>
+<div id="guest-mode-display" style="font-size: 13px; color: #00bcd4; margin-top: 10px;">Chế độ: Đang cập nhật...</div>
                 <div id="lobby-player-list" style="display: flex; flex-direction: column; gap: 6px; margin-top: 15px;">
                     <!-- Danh sách người chơi trong phòng -->
                 </div>
@@ -2090,6 +2098,24 @@ function animate() {
 
 // Khởi chạy vòng lặp game
 animate();
+// Gửi lệnh khi Host đổi chế độ trên dropdown
+function changeRoomMode(subMode) {
+    socket.emit('update_room_mode', { subMode });
+}
+
+// Nhận lệnh bắt đầu trận đấu kèm chế độ từ Server
+socket.on('game_started', (data) => {
+    document.getElementById('room-lobby-overlay').style.display = 'none';
+
+    if (data.room.players[0] && data.room.players[0].id === socket.id) {
+        myPlayerRole = 1;
+    } else {
+        myPlayerRole = 2;
+    }
+
+    // Khởi động trận đấu đúng với chế độ mà Host đã chọn
+    startGame(data.subMode || 'pvp_solo');
+});
  async function handleRegister() {
     const username = document.getElementById('auth-username').value.trim();
     const password = document.getElementById('auth-password').value.trim();
@@ -2270,14 +2296,27 @@ socket.on('room_list_update', (roomList) => {
 // Cập nhật chi tiết giao diện trong phòng
 socket.on('room_joined', updateRoomDetailUI);
 socket.on('room_update', updateRoomDetailUI);
+socket.on('error_msg', (message) => alert(message));
 
 function updateRoomDetailUI(room) {
+const isHost = room.host === currentUser;
+const modeContainer = document.getElementById('room-mode-container');
+const guestModeDisplay = document.getElementById('guest-mode-display');
+let modeTextName = room.subMode === 'pvp_coop' ? 'VƯỢT MÀN CÙNG NHAU (CO-OP)' : 'SOLO 1 VS 1 THUẦN TÚY';
+
+if (isHost) {
+    modeContainer.style.display = 'block';
+    guestModeDisplay.style.display = 'none';
+    document.getElementById('select-room-mode').value = room.subMode || 'pvp_solo';
+} else {
+    modeContainer.style.display = 'none';
+    guestModeDisplay.style.display = 'block';
+    guestModeDisplay.innerText = `Chế độ: ${modeTextName}`;
+}
     currentRoomData = room;
     document.getElementById('lobby-room-name').innerText = room.name;
     const playerContainer = document.getElementById('lobby-player-list');
     playerContainer.innerHTML = '';
-
-    const isHost = room.host === currentUser;
 
     room.players.forEach(p => {
         const div = document.createElement('div');
@@ -2301,19 +2340,6 @@ function updateRoomDetailUI(room) {
 
 // Khi Host bấm BẮT ĐẦU TRẬN
 let myPlayerRole = 1; // 1 = Host (Player 1), 2 = Khách (Player 2)
-
-socket.on('game_started', (room) => {
-    document.getElementById('room-lobby-overlay').style.display = 'none';
-    
-    // Xác định xem mình là Player 1 (người tạo phòng) hay Player 2 (người vào sau)
-    if (room.players[0] && room.players[0].id === socket.id) {
-        myPlayerRole = 1;
-    } else {
-        myPlayerRole = 2;
-    }
-    
-    startGame('pvp_solo');
-});
 
 // Thao tác nút bấm người dùng
 function showCreateRoomModal() {
