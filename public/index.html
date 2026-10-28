@@ -1740,24 +1740,42 @@
                 particles.push(p);
             }
         }
-
-        function startTimer() {
+function startTimer() {
             clearInterval(timerInterval);
             timerInterval = setInterval(() => {
                 if (gameActive && timeRemaining > 0) {
                     timeRemaining--;
                     timerEl.innerText = timeRemaining;
                     
-                    weaponSpawnTimer--;
-                    if (weaponSpawnTimer <= 0) {
-                        currentWeaponBox = new Box('weapon');
-                        weaponSpawnTimer = 20;
-                    }
+                    // Chỉ Host (Player 1) tính toán sinh hộp khi chơi Online PvP để đồng bộ
+                    if (myPlayerRole === 1 || gameSubMode !== 'pvp_solo') {
+                        weaponSpawnTimer--;
+                        if (weaponSpawnTimer <= 0) {
+                            currentWeaponBox = new Box('weapon');
+                            weaponSpawnTimer = 20;
+                            if (gameSubMode === 'pvp_solo' && myPlayerRole === 1) {
+                                socket.emit('spawn_box', { 
+                                    category: 'weapon', 
+                                    x: currentWeaponBox.x, 
+                                    y: currentWeaponBox.y, 
+                                    type: currentWeaponBox.type 
+                                });
+                            }
+                        }
 
-                    shieldSpawnTimer--;
-                    if (shieldSpawnTimer <= 0) {
-                        currentShieldBox = new Box('defense');
-                        shieldSpawnTimer = 17;
+                        shieldSpawnTimer--;
+                        if (shieldSpawnTimer <= 0) {
+                            currentShieldBox = new Box('defense');
+                            shieldSpawnTimer = 17;
+                            if (gameSubMode === 'pvp_solo' && myPlayerRole === 1) {
+                                socket.emit('spawn_box', { 
+                                    category: 'defense', 
+                                    x: currentShieldBox.x, 
+                                    y: currentShieldBox.y, 
+                                    type: currentShieldBox.type 
+                                });
+                            }
+                        }
                     }
 
                     if (timeRemaining === 0) {
@@ -1774,7 +1792,6 @@
                 }
             }, 1000);
         }
-
         function returnToMainMenu() {
             gameActive = false;
             clearInterval(timerInterval);
@@ -2130,7 +2147,70 @@ async function handleLogin() {
 const socket = io();
 let currentUser = '';
 let currentRoomData = null;
+// --- ĐỒNG BỘ NÂNG CAO MULTIPLAYER SOCKET.IO ---
 
+// 1. Đồng bộ Đạn bắn (Bullets)
+const originalShoot = Fighter.prototype.shoot;
+Fighter.prototype.shoot = function() {
+    if (this.health <= 0 || this.stunnedTimer > 0 || this.attackCooldown > 0 || this.isBlocking || this.ammo <= 0) return;
+    
+    let bx = this.facing === 'right' ? this.position.x + this.width : this.position.x - 14;
+    let by = this.position.y + 40;
+    
+    if ((myPlayerRole === 1 && this.id === 1) || (myPlayerRole === 2 && this.id === 2)) {
+        socket.emit('player_shoot', { x: bx, y: by, facing: this.facing, ownerId: this.id });
+    }
+    
+    originalShoot.call(this);
+};
+
+socket.on('remote_player_shoot', (data) => {
+    let shooter = (data.ownerId === 1) ? player1 : player2;
+    if (shooter) {
+        bullets.push(new Bullet(data.x, data.y, data.facing, data.ownerId, false));
+    }
+});
+
+// 2. Đồng bộ Đặt bẫy (Traps)
+const originalTryDeployNetTrap = Fighter.prototype.tryDeployNetTrap;
+Fighter.prototype.tryDeployNetTrap = function() {
+    if (this.charTypeIndex !== 4 || this.health <= 0 || this.stunnedTimer > 0 || this.netTrapCooldown > 0) return;
+    
+    let trapX = this.facing === 'right' ? this.position.x + this.width + 20 : this.position.x - 60;
+    let trapY = GROUND_Y - 25;
+    for (let plat of platforms) {
+        if (Math.abs((this.position.y + this.height) - plat.y) < 6 &&
+            this.position.x + this.width > plat.x && this.position.x < plat.x + plat.w) {
+            trapY = plat.y - 25;
+            break;
+        }
+    }
+
+    if ((myPlayerRole === 1 && this.id === 1) || (myPlayerRole === 2 && this.id === 2)) {
+        socket.emit('player_trap', { x: trapX, y: trapY, ownerId: this.id });
+    }
+
+    originalTryDeployNetTrap.call(this);
+};
+
+socket.on('remote_player_trap', (data) => {
+    traps.push(new Trap(data.x, data.ownerId, data.y));
+});
+
+// 3. Đồng bộ Hộp vật phẩm (Boxes)
+socket.on('sync_spawn_box', (data) => {
+    if (data.category === 'weapon') {
+        currentWeaponBox = new Box('weapon');
+        currentWeaponBox.x = data.x;
+        currentWeaponBox.y = data.y;
+        currentWeaponBox.type = data.type;
+    } else {
+        currentShieldBox = new Box('defense');
+        currentShieldBox.x = data.x;
+        currentShieldBox.y = data.y;
+        currentShieldBox.type = data.type;
+    }
+});
 // Ghi đè lại hàm handleLogin để sau khi đăng nhập thành công sẽ mở Sảnh Phòng
 const originalHandleLogin = handleLogin;
 handleLogin = async function() {
