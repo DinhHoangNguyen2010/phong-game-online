@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Game Đối Kháng - Tăng Trưởng Trực Tiếp & Đa Quái Vượt Màn</title>
+<script src="/socket.io/socket.io.js"></script>
     <style>
         * { box-sizing: border-box; user-select: none; }
         body {
@@ -114,6 +115,38 @@
             <button class="menu-btn btn-purple" style="flex: 1; padding: 10px;" onclick="handleRegister()">ĐĂNG KÝ</button>
         </div>
         <div id="auth-message" style="color: #f9d423; font-size: 14px; text-align: center; min-height: 20px;"></div>
+    </div>
+</div>
+<!-- Màn Hình Sảnh Phòng Xarena Style -->
+<div id="room-lobby-overlay" class="overlay-screen" style="display: none; z-index: 25;">
+    <div class="menu-title">SẢNH PHÒNG GAME (ONLINE)</div>
+    
+    <div style="display: flex; gap: 20px; width: 80%; max-width: 900px; height: 400px;">
+        <!-- Bên trái: Danh sách phòng -->
+        <div style="flex: 2; background: #16213e; border: 2px solid #0f3460; border-radius: 8px; padding: 15px; display: flex; flex-direction: column;">
+            <div style="display: flex; justify-content: space-between; margin-bottom: 10px; color: #f9d423; font-weight: bold;">
+                <span>DANH SÁCH PHÒNG</span>
+                <button onclick="showCreateRoomModal()" class="menu-btn btn-blue" style="padding: 5px 15px; font-size: 14px;">+ TẠO PHÒNG</button>
+            </div>
+            <div id="room-list" style="flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 8px;">
+                <!-- Danh sách phòng sẽ tự động xuất hiện ở đây -->
+            </div>
+        </div>
+
+        <!-- Bên phải: Chi tiết phòng đang vào -->
+        <div id="room-detail" style="flex: 1; background: #16213e; border: 2px solid #0f3460; border-radius: 8px; padding: 15px; display: flex; flex-direction: column; justify-content: space-between;">
+            <div>
+                <h3 id="lobby-room-name" style="color: #4361ee; margin-top: 0;">Chưa vào phòng</h3>
+                <div id="lobby-player-list" style="display: flex; flex-direction: column; gap: 6px; margin-top: 15px;">
+                    <!-- Danh sách người chơi trong phòng -->
+                </div>
+            </div>
+            <div style="display: flex; flex-direction: column; gap: 8px;">
+                <button id="btn-ready" class="menu-btn btn-purple" onclick="toggleReady()" style="display: none;">SẴN SÀNG</button>
+                <button id="btn-start" class="menu-btn" onclick="hostStartGame()" style="display: none;">BẮT ĐẦU TRẬN</button>
+                <button id="btn-leave" class="menu-btn btn-orange" onclick="leaveRoom()" style="display: none;">RỜI PHÒNG</button>
+            </div>
+        </div>
     </div>
 </div>
     <div id="game-container">
@@ -2062,6 +2095,133 @@ async function handleLogin() {
     } catch (err) {
         msgEl.innerText = 'Lỗi kết nối tới máy chủ!';
     }
+}
+// --- KẾT NỐI SOCKET.IO & XỬ LÝ SẢNH PHÒNG ---
+const socket = io();
+let currentUser = '';
+let currentRoomData = null;
+
+// Ghi đè lại hàm handleLogin để sau khi đăng nhập thành công sẽ mở Sảnh Phòng
+const originalHandleLogin = handleLogin;
+handleLogin = async function() {
+    const username = document.getElementById('auth-username').value.trim();
+    const password = document.getElementById('auth-password').value.trim();
+    const msgEl = document.getElementById('auth-message');
+
+    if (!username || !password) {
+        msgEl.innerText = 'Vui lòng nhập đầy đủ tài khoản & mật khẩu!';
+        return;
+    }
+
+    try {
+        const res = await fetch('/api/login', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ username, password })
+        });
+        const data = await res.json();
+        if (data.success) {
+            currentUser = data.username;
+            document.getElementById('auth-overlay').style.display = 'none';
+            // Đăng nhập thành công -> Hiển thị sảnh chọn phòng Xarena
+            document.getElementById('room-lobby-overlay').style.display = 'flex';
+        } else {
+            msgEl.innerText = data.message;
+        }
+    } catch (err) {
+        msgEl.innerText = 'Lỗi kết nối tới máy chủ!';
+    }
+};
+
+// Nhận danh sách phòng cập nhật từ Server thời gian thực
+socket.on('room_list_update', (roomList) => {
+    const container = document.getElementById('room-list');
+    container.innerHTML = '';
+    
+    if (roomList.length === 0) {
+        container.innerHTML = '<div style="color: #bdc3c7; text-align: center; margin-top: 20px;">Chưa có phòng nào. Hãy bấm "+ TẠO PHÒNG"!</div>';
+        return;
+    }
+
+    roomList.forEach(room => {
+        const item = document.createElement('div');
+        item.style = 'background: #0f3460; padding: 10px; border-radius: 6px; display: flex; justify-content: space-between; align-items: center; color: #fff;';
+        item.innerHTML = `
+            <div>
+                <strong>${room.name}</strong> <span style="font-size: 12px; color: #bdc3c7;">(Host: ${room.host})</span>
+                <div style="font-size: 11px; color: #f9d423;">${room.players.length} / ${room.maxPlayers} người - ${room.status === 'playing' ? 'Đang chơi' : 'Đang chờ...'}</div>
+            </div>
+            <button class="menu-btn btn-blue" style="padding: 6px 12px; font-size: 12px;" ${room.status === 'playing' || room.players.length >= room.maxPlayers ? 'disabled' : ''} onclick="joinRoom('${room.id}')">JOIN</button>
+        `;
+        container.appendChild(item);
+    });
+});
+
+// Cập nhật chi tiết giao diện trong phòng
+socket.on('room_joined', updateRoomDetailUI);
+socket.on('room_update', updateRoomDetailUI);
+
+function updateRoomDetailUI(room) {
+    currentRoomData = room;
+    document.getElementById('lobby-room-name').innerText = room.name;
+    const playerContainer = document.getElementById('lobby-player-list');
+    playerContainer.innerHTML = '';
+
+    const isHost = room.host === currentUser;
+
+    room.players.forEach(p => {
+        const div = document.createElement('div');
+        div.style = 'background: #0f3460; padding: 8px; border-radius: 4px; color: #fff; display: flex; justify-content: space-between; font-size: 13px;';
+        div.innerHTML = `
+            <span>${p.username} ${p.username === room.host ? '👑 (Host)' : ''}</span>
+            <span style="color: ${p.isReady ? '#2ecc71' : '#e74c3c'}; font-weight: bold;">${p.isReady ? 'READY' : 'WAITING'}</span>
+        `;
+        playerContainer.appendChild(div);
+    });
+
+    document.getElementById('btn-leave').style.display = 'block';
+    if (isHost) {
+        document.getElementById('btn-start').style.display = 'block';
+        document.getElementById('btn-ready').style.display = 'none';
+    } else {
+        document.getElementById('btn-start').style.display = 'none';
+        document.getElementById('btn-ready').style.display = 'block';
+    }
+}
+
+// Khi Host bấm BẮT ĐẦU TRẬN
+socket.on('game_started', (room) => {
+    document.getElementById('room-lobby-overlay').style.display = 'none';
+    startGame('pvp_solo'); // Bắt đầu vào game đối kháng
+});
+
+// Thao tác nút bấm người dùng
+function showCreateRoomModal() {
+    const roomName = prompt('Nhập tên phòng của bạn:', `Phòng của ${currentUser}`);
+    if (roomName) {
+        socket.emit('create_room', { roomName, maxPlayers: 2, username: currentUser });
+    }
+}
+
+function joinRoom(roomId) {
+    socket.emit('join_room', { roomId, username: currentUser });
+}
+
+function toggleReady() {
+    socket.emit('toggle_ready');
+}
+
+function hostStartGame() {
+    socket.emit('start_game');
+}
+
+function leaveRoom() {
+    socket.emit('leave_room');
+    document.getElementById('lobby-room-name').innerText = 'Chưa vào phòng';
+    document.getElementById('lobby-player-list').innerHTML = '';
+    document.getElementById('btn-ready').style.display = 'none';
+    document.getElementById('btn-start').style.display = 'none';
+    document.getElementById('btn-leave').style.display = 'none';
 }
     </script>
 </body>
