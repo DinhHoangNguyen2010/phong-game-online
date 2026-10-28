@@ -3,14 +3,33 @@ const http = require('http');
 const { Server } = require('socket.io');
 const mongoose = require('mongoose');
 const bcrypt = require('bcryptjs');
+const path = require('path');
+const fs = require('fs');
 
 const app = express();
 const server = http.createServer(app);
 const io = new Server(server);
 
 app.use(express.json());
-app.get('/', (req, res) => res.sendFile(require('path').join(__dirname, 'index.html')));
-app.use('/public', express.static(require('path').join(__dirname, 'public')));
+
+// Phục vụ giao diện game tại trang chủ.
+const publicDir = path.join(__dirname, 'public');
+const indexPath = path.join(publicDir, 'index.html');
+app.get('/', (req, res) => {
+    if (!fs.existsSync(indexPath)) {
+        console.error('Không tìm thấy index.html tại:', indexPath);
+        return res.status(500).send('Lỗi cấu hình: không tìm thấy index.html. Hãy kiểm tra Root Directory trên Render.');
+    }
+    res.sendFile(indexPath);
+});
+
+app.get('/healthz', (req, res) => res.status(200).send('OK'));
+app.use(express.static(publicDir));
+// Hỗ trợ cả đường dẫn /public/... nếu giao diện đang dùng đường dẫn kiểu cũ.
+app.use('/public', express.static(publicDir));
+
+// Báo lỗi rõ ràng thay vì trang Not Found trống nếu URL không tồn tại.
+app.use((req, res) => res.status(404).send(`Not Found: ${req.method} ${req.originalUrl}`));
 
 // Kết nối DB MongoDB
 const mongoURI = process.env.MONGO_URI || 'mongodb://localhost:27017/phonggame';
@@ -236,6 +255,8 @@ function handleLeaveRoom(socket) {
 }
 
 const PORT = process.env.PORT || 3000;
-server.listen(PORT, () => {
-    console.log(`Server chạy tại http://localhost:${PORT}`);
+server.listen(PORT, '0.0.0.0', () => {
+    console.log(`Server đang chạy trên cổng ${PORT}`);
+    console.log('Thư mục chạy:', __dirname);
+    console.log('index.html tồn tại:', fs.existsSync(indexPath));
 });
