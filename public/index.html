@@ -2116,6 +2116,7 @@ socket.on('game_started', (data) => {
     // Khởi động trận đấu đúng với chế độ mà Host đã chọn
     startGame(data.subMode || 'pvp_solo');
 });
+const socket = io();
  async function handleRegister() {
     const username = document.getElementById('auth-username').value.trim();
     const password = document.getElementById('auth-password').value.trim();
@@ -2170,7 +2171,7 @@ async function handleLogin() {
     }
 }
 // --- KẾT NỐI SOCKET.IO & XỬ LÝ SẢNH PHÒNG ---
-const socket = io();
+
 let currentUser = '';
 let currentRoomData = null;
 // --- ĐỒNG BỘ NÂNG CAO MULTIPLAYER SOCKET.IO ---
