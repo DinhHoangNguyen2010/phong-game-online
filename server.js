@@ -51,7 +51,7 @@ app.post('/api/login', async (req, res) => {
     }
 });
 
-// ================= HỆ THỐNG CƠ CHẾ PHÒNG (LIKE XARENA) =================
+// ================= HỆ THỐNG CƠ CHẾ PHÒNG & SOCKET.IO =================
 const rooms = {}; // Lưu trữ danh sách phòng đang hoạt động
 
 io.on('connection', (socket) => {
@@ -59,35 +59,7 @@ io.on('connection', (socket) => {
 
     // Gửi danh sách phòng cho người dùng vừa vào Lobby
     socket.emit('room_list_update', Object.values(rooms));
-// Thêm đoạn này vào bên trong io.on('connection', (socket) => { ... })
 
-// 5.1. Đồng bộ vị trí di chuyển
-socket.on('player_move', (data) => {
-    if (socket.roomId) {
-        socket.to(socket.roomId).emit('remote_player_move', {
-            socketId: socket.id,
-            ...data
-        });
-    }
-});
-
-// 5.2. Đồng bộ hành động tấn công (Đấm / Đá / Bắn)
-socket.on('player_action', (data) => {
-    if (socket.roomId) {
-        socket.to(socket.roomId).emit('remote_player_action', {
-            socketId: socket.id,
-            ...data
-        });
-    }
-});
-
-// 5.3. Đồng bộ sát thương / trừ máu khi có người dính đòn
-socket.on('take_damage', (data) => {
-    if (socket.roomId) {
-        // Gửi thông tin cập nhật máu cho người chơi còn lại trong phòng
-        socket.to(socket.roomId).emit('sync_health', data);
-    }
-});
     // 1. Tạo phòng mới
     socket.on('create_room', ({ roomName, maxPlayers, username }) => {
         const roomId = 'room_' + Math.random().toString(36).substr(2, 9);
@@ -123,7 +95,7 @@ socket.on('take_damage', (data) => {
         io.emit('room_list_update', Object.values(rooms));
     });
 
-    // 3. Đổi trạng thái Ready / Đổi tướng
+    // 3. Đổi trạng thái Ready
     socket.on('toggle_ready', () => {
         const room = rooms[socket.roomId];
         if (!room) return;
@@ -135,32 +107,72 @@ socket.on('take_damage', (data) => {
     });
 
     // 4. Host bắt đầu trận đấu
-    // 4. Host bắt đầu trận đấu (Thay thế đoạn start_game cũ trong server.js)
-socket.on('start_game', () => {
-    const room = rooms[socket.roomId];
-    if (!room) return;
-    const player = room.players.find(p => p.id === socket.id);
-    if (player && player.username === room.host) {
-        room.status = 'playing';
-        
-        // Gửi thông báo bắt đầu kèm theo danh sách ID ai là P1 (host), ai là P2 (khách)
-        io.to(room.id).emit('game_started', {
-            room: room,
-            p1SocketId: room.players[0].id,
-            p2SocketId: room.players[1] ? room.players[1].id : null
-        });
-        
-        io.emit('room_list_update', Object.values(rooms));
-    }
-});
+    socket.on('start_game', () => {
+        const room = rooms[socket.roomId];
+        if (!room) return;
+        const player = room.players.find(p => p.id === socket.id);
+        if (player && player.username === room.host) {
+            room.status = 'playing';
+            
+            io.to(room.id).emit('game_started', {
+                room: room,
+                p1SocketId: room.players[0].id,
+                p2SocketId: room.players[1] ? room.players[1].id : null
+            });
+            
+            io.emit('room_list_update', Object.values(rooms));
+        }
+    });
 
-    // 5. Đồng bộ hành động khi đang chơi (In-Game Sync)
-    socket.on('player_input', (data) => {
+    // ==========================================
+    // 5. ĐỒNG BỘ TRONG TRẬN ĐẤU (IN-GAME SYNC)
+    // ==========================================
+
+    // 5.1. Đồng bộ vị trí di chuyển
+    socket.on('player_move', (data) => {
         if (socket.roomId) {
-            socket.to(socket.roomId).emit('remote_player_input', {
+            socket.to(socket.roomId).emit('remote_player_move', {
                 socketId: socket.id,
                 ...data
             });
+        }
+    });
+
+    // 5.2. Đồng bộ hành động tấn công (Đấm / Đá)
+    socket.on('player_action', (data) => {
+        if (socket.roomId) {
+            socket.to(socket.roomId).emit('remote_player_action', {
+                socketId: socket.id,
+                ...data
+            });
+        }
+    });
+
+    // 5.3. Đồng bộ sát thương / trừ máu
+    socket.on('take_damage', (data) => {
+        if (socket.roomId) {
+            socket.to(socket.roomId).emit('sync_health', data);
+        }
+    });
+
+    // 5.4. Đồng bộ bắn súng
+    socket.on('player_shoot', (data) => {
+        if (socket.roomId) {
+            socket.to(socket.roomId).emit('remote_player_shoot', data);
+        }
+    });
+
+    // 5.5. Đồng bộ đặt bẫy lưới
+    socket.on('player_trap', (data) => {
+        if (socket.roomId) {
+            socket.to(socket.roomId).emit('remote_player_trap', data);
+        }
+    });
+
+    // 5.6. Đồng bộ sinh hộp vật phẩm (từ Host)
+    socket.on('spawn_box', (data) => {
+        if (socket.roomId) {
+            socket.to(socket.roomId).emit('sync_spawn_box', data);
         }
     });
 
@@ -184,7 +196,6 @@ function handleLeaveRoom(socket) {
     if (room.players.length === 0) {
         delete rooms[roomId];
     } else {
-        // Nếu Host rời phòng, chuyển Host cho người kế tiếp
         if (room.host === socket.username && room.players.length > 0) {
             room.host = room.players[0].username;
             room.players[0].isReady = true;

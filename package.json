@@ -1,10 +1,10 @@
 {
   "name": "phong-game-online",
   "version": "1.0.0",
-  "description": "",
-  "main": "index.js",
+  "description": "Game đối kháng trực tuyến",
+  "main": "server_4.js",
   "scripts": {
-"start": "node server.js",
+    "start": "node server_4.js",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "keywords": [],
