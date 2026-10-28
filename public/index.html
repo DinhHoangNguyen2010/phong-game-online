@@ -364,6 +364,7 @@
     </div>
 
     <script>
+const socket = io();
         const canvas = document.getElementById('gameCanvas');
         const ctx = canvas.getContext('2d');
         const shakeLayer = document.getElementById('screen-shake-layer');
@@ -2171,7 +2172,7 @@ async function handleLogin() {
     }
 }
 // --- KẾT NỐI SOCKET.IO & XỬ LÝ SẢNH PHÒNG ---
-const socket = io();
+
 let currentUser = '';
 let currentRoomData = null;
 // --- ĐỒNG BỘ NÂNG CAO MULTIPLAYER SOCKET.IO ---
