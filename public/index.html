@@ -365,8 +365,16 @@
 
     <script>
 const socket = io();
- let myRole = null;
-        const canvas = document.getElementById('gameCanvas');
+
+// ===== STATE TOÀN CỤC — PHẢI KHAI BÁO Ở ĐẦU =====
+let myPlayerRole = 1;          // 1 = Host/P1, 2 = Guest/P2
+let onlineGameActive = false;  // true khi đang chơi online
+let currentUser = '';
+let currentRoomData = null;
+let lastMoveSent = 0;
+// ================================================
+
+const canvas = document.getElementById('gameCanvas');
         const ctx = canvas.getContext('2d');
         const shakeLayer = document.getElementById('screen-shake-layer');
         const timerEl = document.getElementById('timer');
@@ -1820,9 +1828,10 @@ function startTimer() {
                 if (gameActive && timeRemaining > 0) {
                     timeRemaining--;
                     timerEl.innerText = timeRemaining;
-                    
-                    // Chỉ Host (Player 1) tính toán sinh hộp khi chơi Online PvP để đồng bộ
-                    if (myPlayerRole === 1 || gameSubMode !== 'pvp_solo') {
+                                   // Offline: luôn spawn local. Online PvP: CHỈ Host spawn để tránh trùng lặp.
+                   // Offline: luôn spawn. Online: CHỈ Host spawn ở mọi chế độ
+const shouldSpawnLocally = !onlineGameActive || myPlayerRole === 1;
+                    if (shouldSpawnLocally) {
                         weaponSpawnTimer--;
                         if (weaponSpawnTimer <= 0) {
                             currentWeaponBox = new Box('weapon');
@@ -1968,13 +1977,19 @@ function animate() {
         }
         player1.update();
 
-        socket.emit('player_move', {
-            x: player1.position.x,
-            y: player1.position.y,
-            vx: player1.velocity.x,
-            vy: player1.velocity.y,
-            facing: player1.facing
-        });
+           if (onlineGameActive) {
+            const now = performance.now();
+            if (now - lastMoveSent > 50) { // throttle ~20Hz
+                socket.emit('player_move', {
+                    x: player1.position.x,
+                    y: player1.position.y,
+                    vx: player1.velocity.x,
+                    vy: player1.velocity.y,
+                    facing: player1.facing
+                });
+                lastMoveSent = now;
+            }
+        }
     } else {
         player2.velocity.x = 0;
         if (player2.health > 0 && player2.stunnedTimer === 0) {
@@ -1987,13 +2002,19 @@ function animate() {
         }
         player2.update();
 
-        socket.emit('player_move', {
-            x: player2.position.x,
-            y: player2.position.y,
-            vx: player2.velocity.x,
-            vy: player2.velocity.y,
-            facing: player2.facing
-        });
+               if (onlineGameActive) {
+            const now = performance.now();
+            if (now - lastMoveSent > 50) {
+                socket.emit('player_move', {
+                    x: player2.position.x,
+                    y: player2.position.y,
+                    vx: player2.velocity.x,
+                    vy: player2.velocity.y,
+                    facing: player2.facing
+                });
+                lastMoveSent = now;
+            }
+        }
     }
 
     if (gameSubMode === 'bot_campaign' || gameSubMode === 'pvp_coop') {
@@ -2039,32 +2060,42 @@ function animate() {
     allFighters.push(...enemies);
 
     allFighters.forEach(f => {
-        if (currentWeaponBox && checkBoxPickup(f, currentWeaponBox)) {
-            f.hasWeapon = currentWeaponBox.type;
-            f.weaponTimer = 900; 
-            f.ammo = currentWeaponBox.type === 'Gun' ? 8 : 0; 
-            currentWeaponBox.isActive = false;
-            currentWeaponBox = null;
+    // Chỉ xử lý nhặt box cho nhân vật do máy này điều khiển (online)
+    // hoặc tất cả (offline)
+    const isMyFighter = !onlineGameActive || (myPlayerRole === 1 && f.id === 1) || (myPlayerRole === 2 && f.id === 2);
+
+    if (currentWeaponBox && checkBoxPickup(f, currentWeaponBox)) {
+        f.hasWeapon = currentWeaponBox.type;
+        f.weaponTimer = 900;
+        f.ammo = currentWeaponBox.type === 'Gun' ? 8 : 0;
+        if (isMyFighter && onlineGameActive) {
+            socket.emit('pickup_box', { boxType: currentWeaponBox.type, boxKind: 'weapon' });
         }
-        if (currentShieldBox && checkBoxPickup(f, currentShieldBox)) {
-            if (currentShieldBox.type === 'Armor') {
-                let addArmorVal = f.charTypeIndex === 2 ? 150 : 100;
-                let buffArmorBonus = f.permanentArmorBonus || 0;
-                f.armor = Math.min(getArmorCapacity(f), f.armor + addArmorVal + buffArmorBonus);
-            } else if (currentShieldBox.type === 'BronzeShield') {
-                let shieldVal = f.charTypeIndex === 2 ? 220 : 170;
-                f.bronzeShieldTimer = shieldVal; 
-                if (f.id <= 2) {
-                    let bBar = document.getElementById(`p${f.id}-bronze-shield`);
-                    let bText = document.getElementById(`p${f.id}-bronze-text`);
-                    if (bBar) { bBar.style.display = 'block'; bBar.style.width = '100%'; }
-                    if (bText) { bText.style.display = 'flex'; bText.innerText = `KHIÊN ĐỒNG (${shieldVal} HP)`; }
-                }
+        currentWeaponBox.isActive = false;
+        currentWeaponBox = null;
+    }
+    if (currentShieldBox && checkBoxPickup(f, currentShieldBox)) {
+        if (currentShieldBox.type === 'Armor') {
+            let addArmorVal = f.charTypeIndex === 2 ? 150 : 100;
+            let buffArmorBonus = f.permanentArmorBonus || 0;
+            f.armor = Math.min(getArmorCapacity(f), f.armor + addArmorVal + buffArmorBonus);
+        } else if (currentShieldBox.type === 'BronzeShield') {
+            let shieldVal = f.charTypeIndex === 2 ? 220 : 170;
+            f.bronzeShieldTimer = shieldVal;
+            if (f.id <= 2) {
+                let bBar = document.getElementById(`p${f.id}-bronze-shield`);
+                let bText = document.getElementById(`p${f.id}-bronze-text`);
+                if (bBar) { bBar.style.display = 'block'; bBar.style.width = '100%'; }
+                if (bText) { bText.style.display = 'flex'; bText.innerText = `KHIÊN ĐỒNG (${shieldVal} HP)`; }
             }
-            currentShieldBox.isActive = false;
-            currentShieldBox = null;
         }
-    });
+        if (isMyFighter && onlineGameActive) {
+            socket.emit('pickup_box', { boxType: currentShieldBox.type, boxKind: 'defense' });
+        }
+        currentShieldBox.isActive = false;
+        currentShieldBox = null;
+    }
+});
 
     if (currentWeaponBox) { currentWeaponBox.update(); currentWeaponBox.draw(); }
     if (currentShieldBox) { currentShieldBox.update(); currentShieldBox.draw(); }
@@ -2109,17 +2140,21 @@ function animate() {
     });
 
     if (gameSubMode === 'pvp_solo' || gameSubMode === 'bot_easy' || gameSubMode === 'bot_hard') {
-        if (checkCollision(player1, player2)) {
-            handleHit(player1, player2);
-            if (myPlayerRole === 1 && gameSubMode === 'pvp_solo') {
-                syncDamage(2, player2.health, player2.armor);
+        // Xác định nhân vật do máy này điều khiển
+        const myFighter = (myPlayerRole === 1) ? player1 : player2;
+        const oppFighter = (myPlayerRole === 1) ? player2 : player1;
+
+        // Chỉ MÁY SỞ HỮU nhân vật tấn công mới tính damage và gửi lên server
+        if (onlineGameActive && gameSubMode === 'pvp_solo') {
+            if (checkCollision(myFighter, oppFighter)) {
+                handleHit(myFighter, oppFighter);
+                syncDamage(oppFighter.id, oppFighter.health, oppFighter.armor);
             }
-        }
-        if (checkCollision(player2, player1)) {
-            handleHit(player2, player1);
-            if (myPlayerRole === 2 && gameSubMode === 'pvp_solo') {
-                syncDamage(1, player1.health, player1.armor);
-            }
+            // Nhận damage từ đối phương sẽ được server broadcast qua 'sync_health'
+        } else {
+            // Offline: xử lý bình thường
+            if (checkCollision(player1, player2)) handleHit(player1, player2);
+            if (checkCollision(player2, player1)) handleHit(player2, player1);
         }
     } else if (gameSubMode === 'pvp_coop') {
         if (checkCollision(player1, player2)) handleHit(player1, player2);
@@ -2238,9 +2273,6 @@ async function handleLogin() {
 }
 // --- KẾT NỐI SOCKET.IO & XỬ LÝ SẢNH PHÒNG ---
 
-let currentUser = '';
-let currentRoomData = null;
-let onlineGameActive = false;
 // --- ĐỒNG BỘ NÂNG CAO MULTIPLAYER SOCKET.IO ---
 
 // 1. Đồng bộ Đạn bắn (Bullets)
@@ -2257,7 +2289,17 @@ Fighter.prototype.shoot = function() {
     
     originalShoot.call(this);
 };
-
+// 1.1 Đồng bộ Đấm/Đá (Attack)
+const originalAttack = Fighter.prototype.attack;
+Fighter.prototype.attack = function(type) {
+    if (this.health <= 0 || this.stunnedTimer > 0 || this.attackCooldown > 0 || this.isAttacking || (this.isBlocking && this.charTypeIndex !== 5)) return;
+    
+    if ((myPlayerRole === 1 && this.id === 1) || (myPlayerRole === 2 && this.id === 2)) {
+        socket.emit('player_action', { type: type, facing: this.facing });
+    }
+    
+    originalAttack.call(this, type);
+};
 socket.on('remote_player_shoot', (data) => {
     let shooter = (data.ownerId === 1) ? player1 : player2;
     if (shooter) {
@@ -2303,6 +2345,16 @@ socket.on('sync_spawn_box', (data) => {
         currentShieldBox.x = data.x;
         currentShieldBox.y = data.y;
         currentShieldBox.type = data.type;
+    }
+});
+// 3.1 Đồng bộ NHẶT hộp vật phẩm (khi đối phương nhặt thì xóa box bên máy mình)
+socket.on('remote_box_picked', (data) => {
+    if (data.boxKind === 'weapon' && currentWeaponBox) {
+        currentWeaponBox.isActive = false;
+        currentWeaponBox = null;
+    } else if (data.boxKind === 'defense' && currentShieldBox) {
+        currentShieldBox.isActive = false;
+        currentShieldBox = null;
     }
 });
 // Sau khi đăng nhập thành công, mở sảnh phòng online.
@@ -2396,7 +2448,6 @@ if (isHost) {
 }
 
 // Khi Host bấm BẮT ĐẦU TRẬN
-let myPlayerRole = 1; // 1 = Host (Player 1), 2 = Khách (Player 2)
 
 // Thao tác nút bấm người dùng
 function showCreateRoomModal() {
@@ -2441,17 +2492,6 @@ socket.on('remote_player_move', (data) => {
         target.facing = data.facing;
     }
 });
-
-// 2. Gửi hành động tấn công khi bấm phím
-window.addEventListener('keydown', (e) => {
-    if (!gameActive || !onlineGameActive) return;
-    const k = e.key.toLowerCase();
-    if (k !== 'o' && k !== 'p') return;
-    const fighter = myPlayerRole === 1 ? player1 : player2;
-    if (!fighter || fighter.health <= 0 || fighter.stunnedTimer > 0) return;
-    socket.emit('player_action', { type: k === 'p' ? 'kick' : 'punch', facing: fighter.facing });
-});
-
 // 3. Nhận hành động tấn công từ đối phương
 socket.on('remote_player_action', (data) => {
     let opponent = (myPlayerRole === 1) ? player2 : player1;
@@ -2469,13 +2509,20 @@ function syncDamage(targetId, newHealth, newArmor) {
 socket.on('sync_health', (data) => {
     let target = data.targetId === 1 ? player1 : player2;
     if (target) {
-        target.health = data.health;
-        target.armor = data.armor;
+        // Chỉ cập nhật nếu HP server <= HP local (tránh lag rollback khi chính máy này vừa gây damage)
+        target.health = Math.min(target.health, data.health);
+        target.armor  = Math.min(target.armor,  data.armor);
+
         let prefix = data.targetId === 1 ? 'p1' : 'p2';
         let hpBar = document.getElementById(`${prefix}-health`);
         let hpText = document.getElementById(`${prefix}-hp-text`);
-        if (hpBar) hpBar.style.width = (target.health / target.maxHp * 100) + '%';
-        if (hpText) hpText.innerText = `${prefix.toUpperCase()} HP: ${Math.round(target.health)} / ${target.maxHp}`;
+        if (hpBar)  hpBar.style.width  = (target.health / target.maxHp * 100) + '%';
+        if (hpText) hpText.innerText   = `${prefix.toUpperCase()} HP: ${Math.round(target.health)} / ${target.maxHp}`;
+
+        // Nếu HP về 0, kích hoạt endGame ngay (không chờ tick sau)
+        if (target.health <= 0 && gameActive) {
+            endGame(target.id === 1 ? 2 : 1);
+        }
     }
 });
     </script>
