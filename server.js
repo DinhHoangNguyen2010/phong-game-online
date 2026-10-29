@@ -387,9 +387,22 @@ io.on('connection', (socket) => {
         });
     });
 
-    socket.on('take_damage', (data) => {
+     socket.on('take_damage', (data) => {
         if (!socket.roomId || !rooms[socket.roomId]) return;
-        socket.to(socket.roomId).emit('sync_health', data);
+        const room = rooms[socket.roomId];
+        if (room.status !== 'playing') return;
+
+        // Validate: chỉ chấp nhận targetId 1 hoặc 2, HP/armor là số hợp lệ
+        if (typeof data.targetId !== 'number' || ![1, 2].includes(data.targetId)) return;
+        if (typeof data.health !== 'number' || data.health < 0 || data.health > 99999) return;
+        if (typeof data.armor !== 'number' || data.armor < 0 || data.armor > 9999) return;
+
+        // Gửi cho CẢ 2 máy (io.to) để đồng bộ chính xác
+        io.to(room.id).emit('sync_health', {
+            targetId: data.targetId,
+            health: data.health,
+            armor: data.armor
+        });
     });
 
     socket.on('player_shoot', (data) => {
@@ -406,7 +419,15 @@ io.on('connection', (socket) => {
         if (!socket.roomId || !rooms[socket.roomId]) return;
         socket.to(socket.roomId).emit('sync_spawn_box', data);
     });
-
+    // Đồng bộ nhặt hộp vật phẩm (Box)
+    socket.on('pickup_box', (data) => {
+        if (!socket.roomId || !rooms[socket.roomId]) return;
+        // Thông báo cho máy đối phương biết box đã bị nhặt
+        socket.to(socket.roomId).emit('remote_box_picked', {
+            boxKind: data.boxKind,
+            pickerSocketId: socket.id
+        });
+    });
     // Rời phòng
     socket.on('leave_room', () => {
         handleLeaveRoom(socket);
