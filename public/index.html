@@ -1654,6 +1654,14 @@ document.addEventListener('visibilitychange', () => { if (document.hidden) clear
             else if (attacker.hasWeapon === 'Scythe') knockback = 8;
             if (attacker.isBoss) knockback *= 1.25;
             target.velocity.x = hitDir * knockback;
+if (onlineGameActive) {
+    if ((myPlayerRole === 1 && target.id === 2) || (myPlayerRole === 2 && target.id === 1)) {
+        // Đẩy vị trí đích (targetX) lùi lại theo hướng knockback
+        // để P2 trượt lùi mượt mà thay vì đứng yên
+        target.targetX = target.position.x + (hitDir * knockback);
+        target.targetY = target.position.y;
+    }
+}
             if (target.position.y + target.height >= GROUND_Y - 2) {
                 target.velocity.y = attacker.hasWeapon === 'Hammer' ? -8 : (isBullet ? -2 : -4);
             }
@@ -1975,11 +1983,10 @@ function animate() {
             if (keys.a) { player1.velocity.x = -p1Speed; player1.facing = 'left'; }
             else if (keys.d) { player1.velocity.x = p1Speed; player1.facing = 'right'; }
         }
-        player1.update();
 
            if (onlineGameActive) {
             const now = performance.now();
-            if (now - lastMoveSent > 50) { // throttle ~20Hz
+            if (now - lastMoveSent > 30) { // throttle ~33Hz
                 socket.emit('player_move', {
                     x: player1.position.x,
                     y: player1.position.y,
@@ -2000,11 +2007,10 @@ function animate() {
 
             player2.isBlocking = (player2.charTypeIndex === 5) ? false : (onlineGameActive && myPlayerRole === 2 ? keys.s : (keys.ArrowDown || keys.s));
         }
-        player2.update();
 
                if (onlineGameActive) {
             const now = performance.now();
-            if (now - lastMoveSent > 50) {
+            if (now - lastMoveSent > 30) {
                 socket.emit('player_move', {
                     x: player2.position.x,
                     y: player2.position.y,
@@ -2023,10 +2029,27 @@ function animate() {
         updateBotAI(player2, player1);
     }
 
-    player1.isBlocking = (player1.charTypeIndex === 5) ? false : keys.s;
+       player1.isBlocking = (player1.charTypeIndex === 5) ? false : keys.s;
 
-    player1.update();
-    if (gameSubMode !== 'bot_campaign') player2.update();
+    // Nếu đang chơi Offline, hoặc chơi Online nhưng đây là nhân vật CỦA MÌNH thì mới tự update vật lý.
+    // Nhân vật của đối phương sẽ được update thông qua tọa độ nhận từ Socket (remote_player_move).
+    if (!onlineGameActive || myPlayerRole === 1) {
+        player1.update();
+    }
+    if (gameSubMode !== 'bot_campaign') {
+        if (!onlineGameActive || myPlayerRole === 2) {
+            player2.update();
+        }
+    }
+    // Nội suy vị trí cho nhân vật đối phương (online) để di chuyển mượt
+    if (onlineGameActive) {
+        let remoteFighter = (myPlayerRole === 1) ? player2 : player1;
+        if (remoteFighter && remoteFighter.targetX !== undefined) {
+            // Trượt mượt 20% khoảng cách mỗi frame
+            remoteFighter.position.x += (remoteFighter.targetX - remoteFighter.position.x) * 0.2;
+            remoteFighter.position.y += (remoteFighter.targetY - remoteFighter.position.y) * 0.2;
+        }
+    }
     enemies.forEach(e => e.update());
 
     updateHUDStatusAndName(player1, 'p1');
@@ -2480,15 +2503,13 @@ function leaveRoom() {
     document.getElementById('btn-leave').style.display = 'none';
 }
 // --- ĐỒNG BỘ MULTIPLAYER SOCKET.IO ---
-
-// 1. Nhận tọa độ di chuyển của người chơi đối diện
+// 1. Nhận tọa độ di chuyển của người chơi đối diện (có nội suy)
 socket.on('remote_player_move', (data) => {
     let target = (myPlayerRole === 1) ? player2 : player1;
     if (target) {
-        target.position.x = data.x;
-        target.position.y = data.y;
-        target.velocity.x = data.vx;
-        target.velocity.y = data.vy;
+        // Lưu vị trí đích để nội suy ở hàm animate
+        target.targetX = data.x;
+        target.targetY = data.y;
         target.facing = data.facing;
     }
 });
