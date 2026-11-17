@@ -326,26 +326,39 @@ io.on('connection', (socket) => {
         }
     });
     // Nhận index nhân vật đã chọn từ client (khi chế độ "Tùy chọn")
-    socket.on('char_selected', (data) => {
-        const room = rooms[socket.roomId];
-        if (!room || room.status === 'playing') return;
+   socket.on('char_selected', (data) => {
+    const room = rooms[socket.roomId];
+    if (!room || room.status === 'playing') return;
 
-        // Lưu index nhân vật
+    // Khởi tạo object lưu lựa chọn nhân vật
+    if (!room.pickedChars) {
+        room.pickedChars = { p1: null, p2: null };
+    }
+
+    // Xác định ai vừa gửi
+    const playerIndex = room.players.findIndex(p => p.id === socket.id);
+
+    if (playerIndex === 0 && typeof data.p1CharIndex === 'number') {
+        room.pickedChars.p1 = data.p1CharIndex;
         if (room.players[0]) room.players[0].charIndex = data.p1CharIndex;
+    } else if (playerIndex === 1 && typeof data.p2CharIndex === 'number') {
+        room.pickedChars.p2 = data.p2CharIndex;
         if (room.players[1]) room.players[1].charIndex = data.p2CharIndex;
+    }
 
-        // Báo cả 2 máy bắt đầu game với nhân vật đã chọn
+    // Chỉ start khi CẢ 2 đã chọn xong
+    if (room.pickedChars.p1 !== null && room.pickedChars.p2 !== null) {
+        room.status = 'playing';
         io.to(room.id).emit('start_game_with_chars', {
             subMode: room.subMode,
-            p1CharIndex: data.p1CharIndex,
-            p2CharIndex: data.p2CharIndex,
+            p1CharIndex: room.pickedChars.p1,
+            p2CharIndex: room.pickedChars.p2,
             p1SocketId: room.players[0].id,
             p2SocketId: room.players[1] ? room.players[1].id : null
         });
-
-        room.status = 'playing';
         io.emit('room_list_update', Object.values(rooms));
-    });
+    }
+});
     // Bắt đầu trận đấu
     socket.on('start_game', () => {
         const room = rooms[socket.roomId];
