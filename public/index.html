@@ -2096,18 +2096,49 @@ function animate() {
     }
        // Nội suy vị trí cho nhân vật đối phương (online) để di chuyển mượt
     if (onlineGameActive) {
-        let remoteFighter = (myPlayerRole === 1) ? player2 : player1;
-        if (remoteFighter && remoteFighter.targetX !== undefined) {
-            // Trượt mượt 20% khoảng cách mỗi frame
-            remoteFighter.position.x += (remoteFighter.targetX - remoteFighter.position.x) * 0.2;
-            remoteFighter.position.y = remoteFighter.targetY;
+    let remoteFighter = (myPlayerRole === 1) ? player2 : player1;
+    if (remoteFighter && remoteFighter.targetX !== undefined) {
+        remoteFighter.position.x += (remoteFighter.targetX - remoteFighter.position.x) * 0.2;
+        remoteFighter.position.y = remoteFighter.targetY;
+    }
+    
+    if (remoteFighter) {
+        // ✅ FIX: Update animation đánh cho nhân vật đối phương
+        if (remoteFighter.isAttacking && remoteFighter.stunnedTimer === 0) {
+            remoteFighter.attackBox.position.y = remoteFighter.position.y + (remoteFighter.attackType === 'punch' ? 25 : 55);
+            let w = 0;
+            if (remoteFighter.attackType === 'punch') {
+                w = remoteFighter.isBoss ? 65 : 45;
+                if (remoteFighter.hasWeapon === 'Sword' || remoteFighter.hasWeapon === 'Scythe') w += 40;
+            } else {
+                w = remoteFighter.isBoss ? 95 : 75;
+            }
+            
+            if (remoteFighter.facing === 'right') {
+                remoteFighter.attackBox.position.x = remoteFighter.position.x + remoteFighter.width;
+                remoteFighter.attackBox.width = w;
+            } else {
+                remoteFighter.attackBox.position.x = remoteFighter.position.x - w;
+                remoteFighter.attackBox.width = w;
+            }
+            
+            remoteFighter.attackTimer--;
+            if (remoteFighter.attackTimer <= 0) {
+                remoteFighter.isAttacking = false;
+                remoteFighter.attackType = null;
+            }
         }
         
-        // FIX: Giảm hitFlashTimer cho đối phương để không bị kẹt màu trắng
-        if (remoteFighter && remoteFighter.hitFlashTimer > 0) {
-            remoteFighter.hitFlashTimer--;
+        // Update các cooldown khác của đối phương
+        if (remoteFighter.attackCooldown > 0) remoteFighter.attackCooldown--;
+        if (remoteFighter.stunnedTimer > 0) remoteFighter.stunnedTimer--;
+        if (remoteFighter.hitFlashTimer > 0) remoteFighter.hitFlashTimer--;
+        if (remoteFighter.weaponTimer > 0) {
+            remoteFighter.weaponTimer--;
+            if (remoteFighter.weaponTimer <= 0) remoteFighter.hasWeapon = null;
         }
     }
+}
     enemies.forEach(e => e.update());
 
     updateHUDStatusAndName(player1, 'p1');
