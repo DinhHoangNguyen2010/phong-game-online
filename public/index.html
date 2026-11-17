@@ -345,7 +345,11 @@
                     <button class="menu-btn" style="background: #7f8c8d;" onclick="backFromCharSelectP2()">QUAY LẠI</button>
                 </div>
             </div>
-
+            <!-- Màn hình chờ đối thủ (THÊM MỚI) -->
+            <div id="waiting-overlay" class="overlay-screen" style="display: none; z-index: 35; background: rgba(0,0,0,0.9);">
+                <div class="menu-title" style="color: #00bcd4;">ĐANG CHỜ ĐỐI THỦ CHỌN NHÂN VẬT...</div>
+                <div style="margin-top: 20px; font-size: 50px;">⌛</div>
+            </div>
             <!-- Bảng Chọn Buff Vượt Màn -->
             <div id="buff-select-overlay" class="overlay-screen" style="display: none;">
                 <div class="menu-title" id="buff-title">CHỌN NĂNG LỰC HỖ TRỢ</div>
@@ -413,6 +417,7 @@ const canvas = document.getElementById('gameCanvas');
         let selectedP2CharIndex = 1;
 
         let timeRemaining = 500;
+let timeScale = 1;
         let timerInterval;
         let shakeTime = 0, shakeIntensity = 0;
         
@@ -1233,21 +1238,20 @@ document.addEventListener('visibilitychange', () => { if (document.hidden) clear
             else mainMenuOverlay.style.display = 'flex';
         }
 
-        function confirmCharP1Selection() {
-    charSelectP1Overlay.style.display = 'none';
-
-    // ONLINE: P1 chỉ gửi nhân vật của MÌNH
+function confirmCharP1Selection() {
     if (onlineGameActive) {
+       charSelectP1Overlay.style.display = 'none';  // Ẩn bảng chọn
+ document.getElementById('waiting-overlay').style.display = 'flex';
         if (myPlayerRole === 1) {
             socket.emit('char_selected', { p1CharIndex: selectedP1CharIndex });
-        }
-else if (myPlayerRole === 2) {
-            socket.emit('char_selected', { p2CharIndex: selectedP1CharIndex });  // ← THÊM
+        } else if (myPlayerRole === 2) {
+            socket.emit('char_selected', { p2CharIndex: selectedP1CharIndex });
         }
         return;
     }
 
-    // OFFLINE: giữ nguyên luồng cũ
+    // OFFLINE: ẩn overlay và giữ nguyên luồng cũ
+    charSelectP1Overlay.style.display = 'none';
     if (pendingSubMode === 'pvp_solo' || pendingSubMode === 'pvp_coop') {
         document.getElementById('p2-select-title').innerText = 'PLAYER 2: CHỌN NHÂN VẬT';
         charSelectP2Overlay.style.display = 'flex';
@@ -1262,13 +1266,15 @@ else if (myPlayerRole === 2) {
         function backFromCharSelectP2() {
             charSelectP2Overlay.style.display = 'none';
             charSelectP1Overlay.style.display = 'flex';
-        }
+        }	
 
 function confirmCharP2Selection() {
     charSelectP2Overlay.style.display = 'none';
 
     // ONLINE: P2 chỉ gửi nhân vật của MÌNH
     if (onlineGameActive) {
+        document.getElementById('waiting-overlay').style.display = 'flex';   // ← THÊM DÒNG NÀY
+
         if (myPlayerRole === 2) {
             socket.emit('char_selected', { p2CharIndex: selectedP2CharIndex });
         }
@@ -1296,6 +1302,7 @@ else if (myPlayerRole === 1) {
             buffSelectOverlay.style.display = 'none';
             endOverlayEl.style.display = 'none';
    document.getElementById('room-lobby-overlay').style.display = 'none';
+document.getElementById('waiting-overlay').style.display = 'none'; 
             let p1Color = charTypes[selectedP1CharIndex].color;
             player1 = new Fighter({ position: { x: 150, y: 0 }, color: p1Color, id: 1, charTypeIndex: selectedP1CharIndex });
 
@@ -1925,6 +1932,7 @@ const shouldSpawnLocally = !onlineGameActive || myPlayerRole === 1;
         onlineGameActive = false;
     }
             endOverlayEl.style.display = 'none';
+    document.getElementById('waiting-overlay').style.display = 'none'; 
             pvpMenuOverlay.style.display = 'none';
             botMenuOverlay.style.display = 'none';
             soloBotDiffOverlay.style.display = 'none';
@@ -2092,12 +2100,14 @@ function animate() {
 
     // Nếu đang chơi Offline, hoặc chơi Online nhưng đây là nhân vật CỦA MÌNH thì mới tự update vật lý.
     // Nhân vật của đối phương sẽ được update thông qua tọa độ nhận từ Socket (remote_player_move).
-    if (!onlineGameActive || myPlayerRole === 1) {
+       if (!onlineGameActive || myPlayerRole === 1) {
         player1.update();
+        updateHUDStatusAndName(player1, 'p1'); // <-- THÊM DÒNG NÀY
     }
     if (gameSubMode !== 'bot_campaign') {
         if (!onlineGameActive || myPlayerRole === 2) {
             player2.update();
+            updateHUDStatusAndName(player2, 'p2'); // <-- THÊM DÒNG NÀY
         }
     }
        // Nội suy vị trí cho nhân vật đối phương (online) để di chuyển mượt
