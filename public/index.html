@@ -2340,7 +2340,7 @@ socket.on('game_started', (data) => {
         startGame(data.subMode || 'pvp_solo');
     } 
     // Nếu chế độ là TÙY CHỌN → hiện màn hình chọn nhân vật
-       } else {
+        else {
         // Chế độ PICK: mỗi máy tự chọn nhân vật CỦA MÌNH
         pendingSubMode = data.subMode || 'pvp_solo';
 
