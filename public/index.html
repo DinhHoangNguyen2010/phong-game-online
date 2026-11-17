@@ -1241,6 +1241,9 @@ document.addEventListener('visibilitychange', () => { if (document.hidden) clear
         if (myPlayerRole === 1) {
             socket.emit('char_selected', { p1CharIndex: selectedP1CharIndex });
         }
+else if (myPlayerRole === 2) {
+            socket.emit('char_selected', { p2CharIndex: selectedP1CharIndex });  // ← THÊM
+        }
         return;
     }
 
@@ -1269,6 +1272,9 @@ function confirmCharP2Selection() {
         if (myPlayerRole === 2) {
             socket.emit('char_selected', { p2CharIndex: selectedP2CharIndex });
         }
+else if (myPlayerRole === 1) {
+            socket.emit('char_selected', { p1CharIndex: selectedP2CharIndex });  // ← THÊM
+        }
         return;
     }
 
@@ -1289,7 +1295,7 @@ function confirmCharP2Selection() {
             charSelectP2Overlay.style.display = 'none';
             buffSelectOverlay.style.display = 'none';
             endOverlayEl.style.display = 'none';
-
+   document.getElementById('room-lobby-overlay').style.display = 'none';
             let p1Color = charTypes[selectedP1CharIndex].color;
             player1 = new Fighter({ position: { x: 150, y: 0 }, color: p1Color, id: 1, charTypeIndex: selectedP1CharIndex });
 
