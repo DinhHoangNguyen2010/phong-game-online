@@ -143,6 +143,13 @@
         <option value="pvp_solo">SOLO 1 VS 1 THUẦN TÚY</option>
         <option value="pvp_coop">VƯỢT MÀN CÙNG NHAU (CO-OP)</option>
     </select>
+
+    <!-- THÊM DROPDOWN MỚI NÀY -->
+    <label style="font-size: 12px; color: #f9d423; font-weight: bold; margin-top: 10px; display: block;">CHẾ ĐỘ CHỌN NHÂN VẬT:</label>
+    <select id="select-char-mode" onchange="changeCharMode(this.value)" style="width: 100%; padding: 6px; margin-top: 4px; background: #0f3460; color: #fff; border: 1px solid #4361ee; border-radius: 4px;">
+        <option value="pick">TÙY CHỌN (Hiện cửa sổ chọn)</option>
+        <option value="random">RANDOM (Vào trận luôn)</option>
+    </select>
 </div>
 <div id="guest-mode-display" style="font-size: 13px; color: #00bcd4; margin-top: 10px;">Chế độ: Đang cập nhật...</div>
                 <div id="lobby-player-list" style="display: flex; flex-direction: column; gap: 6px; margin-top: 15px;">
@@ -1244,10 +1251,20 @@ document.addEventListener('visibilitychange', () => { if (document.hidden) clear
             charSelectP1Overlay.style.display = 'flex';
         }
 
-        function confirmCharP2Selection() {
-            charSelectP2Overlay.style.display = 'none';
-            startGame(pendingSubMode);
-        }
+      function confirmCharP2Selection() {
+    charSelectP2Overlay.style.display = 'none';
+    
+    if (onlineGameActive) {
+        // Gửi index nhân vật lên server để đồng bộ
+        socket.emit('char_selected', { 
+            p1CharIndex: selectedP1CharIndex, 
+            p2CharIndex: selectedP2CharIndex 
+        });
+        // Chờ server gửi 'sync_start_game' để cả 2 cùng vào
+    } else {
+        startGame(pendingSubMode);
+    }
+}
 
         function startGame(subMode) {
             gameSubMode = subMode;
@@ -1887,7 +1904,10 @@ const shouldSpawnLocally = !onlineGameActive || myPlayerRole === 1;
             gameActive = false;
             clearInterval(timerInterval);
             currentWave = 1;
-            
+             if (onlineGameActive) {
+        socket.emit('leave_room');
+        onlineGameActive = false;
+    }
             endOverlayEl.style.display = 'none';
             pvpMenuOverlay.style.display = 'none';
             botMenuOverlay.style.display = 'none';
@@ -1902,46 +1922,69 @@ const shouldSpawnLocally = !onlineGameActive || myPlayerRole === 1;
         function openPvPMenu() { mainMenuOverlay.style.display = 'none'; pvpMenuOverlay.style.display = 'flex'; }
         function openBotMenu() { mainMenuOverlay.style.display = 'none'; soloBotDiffOverlay.style.display = 'none'; botMenuOverlay.style.display = 'flex'; }
         function openSoloBotDiffMenu() { botMenuOverlay.style.display = 'none'; soloBotDiffOverlay.style.display = 'flex'; }
-        function resetGame() { if (gameSubMode === 'bot_campaign' || gameSubMode === 'pvp_coop') currentWave = 1; startGame(gameSubMode); }
+       function resetGame() { 
+    // Nếu đang chơi online, phải rời phòng trước khi tái đấu
+    if (onlineGameActive) {
+        socket.emit('leave_room');
+        onlineGameActive = false;
+        // Quay về sảnh phòng để chọn lại
+        document.getElementById('end-overlay').style.display = 'none';
+        document.getElementById('room-lobby-overlay').style.display = 'flex';
+        document.getElementById('lobby-room-name').innerText = 'Chưa vào phòng';
+        document.getElementById('lobby-player-list').innerHTML = '';
+        document.getElementById('btn-ready').style.display = 'none';
+        document.getElementById('btn-start').style.display = 'none';
+        document.getElementById('btn-leave').style.display = 'none';
+        return;
+    }
+    
+    if (gameSubMode === 'bot_campaign' || gameSubMode === 'pvp_coop') currentWave = 1; 
+    startGame(gameSubMode); 
+}
 
-        function endGame(winnerId) {
-            gameActive = false;
-            clearInterval(timerInterval);
-            endOverlayEl.style.display = 'flex';
+    function endGame(winnerId) {
+    gameActive = false;
+    clearInterval(timerInterval);
+    endOverlayEl.style.display = 'flex';
 
-            if (gameSubMode === 'bot_campaign') {
-                if (player1.health <= 0) {
-                    winTextEl.innerText = `Thất bại ở màn ${currentWave}!`;
-                    nextBtnEl.style.display = 'none';
-                } else {
-                    if (currentWave < TOTAL_WAVES) {
-                        winTextEl.innerText = `Hoàn thành màn ${currentWave}!`;
-                        nextBtnEl.style.display = 'block';
-                    } else {
-                        winTextEl.innerText = 'CHÚC MỪNG BẠN ĐÃ PHÁ ĐẢO 21 MÀN!';
-                        nextBtnEl.style.display = 'none';
-                    }
-                }
-            } else if (gameSubMode === 'pvp_coop') {
-                if (player1.health <= 0 && player2.health <= 0) {
-                    winTextEl.innerText = `Đồng đội đã thất bại ở màn ${currentWave}!`;
-                    nextBtnEl.style.display = 'none';
-                } else {
-                    if (currentWave < TOTAL_WAVES) {
-                        winTextEl.innerText = `Hoàn thành màn ${currentWave}!`;
-                        nextBtnEl.style.display = 'block';
-                    } else {
-                        winTextEl.innerText = 'CHÚC MỪNG 2 BẠN ĐÃ PHÁ ĐẢO 21 MÀN!';
-                        nextBtnEl.style.display = 'none';
-                    }
-                }
+    if (gameSubMode === 'bot_campaign') {
+        if (player1.health <= 0) {
+            winTextEl.innerText = `Thất bại ở màn ${currentWave}!`;
+            nextBtnEl.style.display = 'none';
+        } else {
+            if (currentWave < TOTAL_WAVES) {
+                winTextEl.innerText = `Hoàn thành màn ${currentWave}!`;
+                nextBtnEl.style.display = 'block';
             } else {
-                if (winnerId === 1) winTextEl.innerText = 'PLAYER 1 WINS!';
-                else if (winnerId === 2) winTextEl.innerText = (gameSubMode.startsWith('bot') ? 'BOT WINS!' : 'PLAYER 2 WINS!');
-                else winTextEl.innerText = 'TRẬN ĐẤU HÒA!';
+                winTextEl.innerText = 'CHÚC MỪNG BẠN ĐÃ PHÁ ĐẢO 21 MÀN!';
                 nextBtnEl.style.display = 'none';
             }
         }
+    } else if (gameSubMode === 'pvp_coop') {
+        if (player1.health <= 0 && player2.health <= 0) {
+            winTextEl.innerText = `Đồng đội đã thất bại ở màn ${currentWave}!`;
+            nextBtnEl.style.display = 'none';
+        } else {
+            if (currentWave < TOTAL_WAVES) {
+                winTextEl.innerText = `Hoàn thành màn ${currentWave}!`;
+                nextBtnEl.style.display = 'block';
+            } else {
+                winTextEl.innerText = 'CHÚC MỪNG 2 BẠN ĐÃ PHÁ ĐẢO 21 MÀN!';
+                nextBtnEl.style.display = 'none';
+            }
+        }
+    } else {
+        if (winnerId === 1) winTextEl.innerText = 'PLAYER 1 WINS!';
+        else if (winnerId === 2) winTextEl.innerText = (gameSubMode.startsWith('bot') ? 'BOT WINS!' : 'PLAYER 2 WINS!');
+        else winTextEl.innerText = 'TRẬN ĐẤU HÒA!';
+        nextBtnEl.style.display = 'none';
+    }
+
+    // Báo cho server biết trận đã kết thúc để reset phòng
+    if (onlineGameActive) {
+        socket.emit('game_over');
+    }
+}
 function animate() {
     requestAnimationFrame(animate);
 
@@ -2041,13 +2084,18 @@ function animate() {
             player2.update();
         }
     }
-    // Nội suy vị trí cho nhân vật đối phương (online) để di chuyển mượt
+       // Nội suy vị trí cho nhân vật đối phương (online) để di chuyển mượt
     if (onlineGameActive) {
         let remoteFighter = (myPlayerRole === 1) ? player2 : player1;
         if (remoteFighter && remoteFighter.targetX !== undefined) {
             // Trượt mượt 20% khoảng cách mỗi frame
             remoteFighter.position.x += (remoteFighter.targetX - remoteFighter.position.x) * 0.2;
-            remoteFighter.position.y += (remoteFighter.targetY - remoteFighter.position.y) * 0.2;
+            remoteFighter.position.y = remoteFighter.targetY;
+        }
+        
+        // FIX: Giảm hitFlashTimer cho đối phương để không bị kẹt màu trắng
+        if (remoteFighter && remoteFighter.hitFlashTimer > 0) {
+            remoteFighter.hitFlashTimer--;
         }
     }
     enemies.forEach(e => e.update());
@@ -2226,27 +2274,39 @@ animate();
 function changeRoomMode(subMode) {
     socket.emit('update_room_mode', { subMode });
 }
-
+function changeCharMode(mode) {
+    socket.emit('update_char_mode', { mode });
+}
 // Nhận lệnh bắt đầu trận đấu kèm chế độ từ Server
 socket.on('game_started', (data) => {
     onlineGameActive = true;
     document.getElementById('room-lobby-overlay').style.display = 'none';
 
-    // Xác định vai trò dựa trên code có sẵn của bạn
-    if (data.p1SocketId === socket.id || (data.room.players[0] && data.room.players[0].id === socket.id)) {
-        myPlayerRole = 1; // Máy này chỉ điều khiển Người chơi 1
+    // Xác định vai trò
+    if (data.p1SocketId === socket.id) {
+        myPlayerRole = 1;
     } else {
-        myPlayerRole = 2; // Máy này chỉ điều khiển Người chơi 2
+        myPlayerRole = 2;
     }
+
     keys.a = keys.d = keys.w = keys.s = false;
     keys.ArrowLeft = keys.ArrowRight = keys.ArrowUp = keys.ArrowDown = false;
 
-    console.log("Vai trò của tôi trong trận này là Player:", myPlayerRole);
-
-    // Khởi động trận đấu đúng với chế độ mà Host đã chọn
-    startGame(data.subMode || 'pvp_solo');
+    // Nếu chế độ là RANDOM → vào trận ngay với nhân vật random
+    if (data.charSelectionMode === 'random') {
+        selectedP1CharIndex = Math.floor(Math.random() * charTypes.length);
+        selectedP2CharIndex = Math.floor(Math.random() * charTypes.length);
+        startGame(data.subMode || 'pvp_solo');
+    } 
+    // Nếu chế độ là TÙY CHỌN → hiện màn hình chọn nhân vật
+    else {
+        pendingSubMode = data.subMode || 'pvp_solo';
+        // Lưu trước, sau khi chọn sẽ dùng giá trị này
+        onlineGameActive = true;
+        // Hiện màn hình chọn nhân vật cho PLAYER 1
+        document.getElementById('char-select-p1-overlay').style.display = 'flex';
+    }
 });
-
 // Ví dụ xử lý Đăng ký ở Frontend
 async function handleRegister() {
     const username = document.getElementById('auth-username').value.trim();
@@ -2440,10 +2500,12 @@ if (isHost) {
     modeContainer.style.display = 'block';
     guestModeDisplay.style.display = 'none';
     document.getElementById('select-room-mode').value = room.subMode || 'pvp_solo';
+    document.getElementById('select-char-mode').value = room.charSelectionMode || 'pick';
 } else {
     modeContainer.style.display = 'none';
     guestModeDisplay.style.display = 'block';
-    guestModeDisplay.innerText = `Chế độ: ${modeTextName}`;
+    let charModeText = room.charSelectionMode === 'random' ? 'RANDOM' : 'TÙY CHỌN';
+    guestModeDisplay.innerText = `Chế độ: ${modeTextName} | Chọn nhân vật: ${charModeText}`;
 }
     currentRoomData = room;
     document.getElementById('lobby-room-name').innerText = room.name;
@@ -2494,6 +2556,7 @@ function hostStartGame() {
 
 function leaveRoom() {
     onlineGameActive = false;
+currentRoomData = null;
     clearHeldKeys();
     socket.emit('leave_room');
     document.getElementById('lobby-room-name').innerText = 'Chưa vào phòng';
@@ -2545,6 +2608,23 @@ socket.on('sync_health', (data) => {
             endGame(target.id === 1 ? 2 : 1);
         }
     }
+});
+socket.on('start_game_with_chars', (data) => {
+    onlineGameActive = true;
+    
+    if (data.p1SocketId === socket.id) {
+        myPlayerRole = 1;
+    } else {
+        myPlayerRole = 2;
+    }
+    
+    selectedP1CharIndex = data.p1CharIndex;
+    selectedP2CharIndex = data.p2CharIndex;
+
+    document.getElementById('char-select-p1-overlay').style.display = 'none';
+    document.getElementById('char-select-p2-overlay').style.display = 'none';
+
+    startGame(data.subMode);
 });
     </script>
 </body>
