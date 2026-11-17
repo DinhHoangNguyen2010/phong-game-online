@@ -1234,36 +1234,46 @@ document.addEventListener('visibilitychange', () => { if (document.hidden) clear
         }
 
         function confirmCharP1Selection() {
-            charSelectP1Overlay.style.display = 'none';
-            if (pendingSubMode === 'pvp_solo' || pendingSubMode === 'pvp_coop') {
-                document.getElementById('p2-select-title').innerText = 'PLAYER 2: CHỌN NHÂN VẬT';
-                charSelectP2Overlay.style.display = 'flex';
-            } else if (pendingSubMode === 'bot_easy' || pendingSubMode === 'bot_hard') {
-                document.getElementById('p2-select-title').innerText = 'BOT: CHỌN NHÂN VẬT';
-                charSelectP2Overlay.style.display = 'flex';
-            } else {
-                startGame(pendingSubMode);
-            }
+    charSelectP1Overlay.style.display = 'none';
+
+    // ONLINE: P1 chỉ gửi nhân vật của MÌNH
+    if (onlineGameActive) {
+        if (myPlayerRole === 1) {
+            socket.emit('char_selected', { p1CharIndex: selectedP1CharIndex });
         }
+        return;
+    }
+
+    // OFFLINE: giữ nguyên luồng cũ
+    if (pendingSubMode === 'pvp_solo' || pendingSubMode === 'pvp_coop') {
+        document.getElementById('p2-select-title').innerText = 'PLAYER 2: CHỌN NHÂN VẬT';
+        charSelectP2Overlay.style.display = 'flex';
+    } else if (pendingSubMode === 'bot_easy' || pendingSubMode === 'bot_hard') {
+        document.getElementById('p2-select-title').innerText = 'BOT: CHỌN NHÂN VẬT';
+        charSelectP2Overlay.style.display = 'flex';
+    } else {
+        startGame(pendingSubMode);
+    }
+}
 
         function backFromCharSelectP2() {
             charSelectP2Overlay.style.display = 'none';
             charSelectP1Overlay.style.display = 'flex';
         }
 
-      function confirmCharP2Selection() {
+function confirmCharP2Selection() {
     charSelectP2Overlay.style.display = 'none';
-    
+
+    // ONLINE: P2 chỉ gửi nhân vật của MÌNH
     if (onlineGameActive) {
-        // Gửi index nhân vật lên server để đồng bộ
-        socket.emit('char_selected', { 
-            p1CharIndex: selectedP1CharIndex, 
-            p2CharIndex: selectedP2CharIndex 
-        });
-        // Chờ server gửi 'sync_start_game' để cả 2 cùng vào
-    } else {
-        startGame(pendingSubMode);
+        if (myPlayerRole === 2) {
+            socket.emit('char_selected', { p2CharIndex: selectedP2CharIndex });
+        }
+        return;
     }
+
+    // OFFLINE
+    startGame(pendingSubMode);
 }
 
         function startGame(subMode) {
@@ -2299,12 +2309,19 @@ socket.on('game_started', (data) => {
         startGame(data.subMode || 'pvp_solo');
     } 
     // Nếu chế độ là TÙY CHỌN → hiện màn hình chọn nhân vật
-    else {
+       } else {
+        // Chế độ PICK: mỗi máy tự chọn nhân vật CỦA MÌNH
         pendingSubMode = data.subMode || 'pvp_solo';
-        // Lưu trước, sau khi chọn sẽ dùng giá trị này
-        onlineGameActive = true;
-        // Hiện màn hình chọn nhân vật cho PLAYER 1
-        document.getElementById('char-select-p1-overlay').style.display = 'flex';
+
+        if (myPlayerRole === 1) {
+            // Máy P1 → hiện bảng chọn của P1
+            document.getElementById('p2-select-title').innerText = 'PLAYER 1: CHỌN NHÂN VẬT';
+            document.getElementById('char-select-p1-overlay').style.display = 'flex';
+        } else {
+            // Máy P2 → hiện bảng chọn của P2
+            document.getElementById('p2-select-title').innerText = 'PLAYER 2: CHỌN NHÂN VẬT';
+            document.getElementById('char-select-p2-overlay').style.display = 'flex';
+        }
     }
 });
 // Ví dụ xử lý Đăng ký ở Frontend
