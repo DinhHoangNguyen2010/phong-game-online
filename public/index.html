@@ -1026,43 +1026,43 @@ document.addEventListener('visibilitychange', () => { if (document.hidden) clear
                 }
             }
 
-            update() {
+               update() {
                 if (this.health <= 0) {
                     this.velocity.x = 0;
                     this.position.y = GROUND_Y - this.height;
                     return;
                 }
 
-                if (this.stunnedTimer > 0) this.stunnedTimer--;
-                if (this.hitFlashTimer > 0) this.hitFlashTimer--;
-                if (this.slamTimer > 0) this.slamTimer--;
-                if (this.attackSpeedBuffTimer > 0) this.attackSpeedBuffTimer--;
+                if (this.stunnedTimer > 0) this.stunnedTimer -= timeScale;
+                if (this.hitFlashTimer > 0) this.hitFlashTimer -= timeScale;
+                if (this.slamTimer > 0) this.slamTimer -= timeScale;
+                if (this.attackSpeedBuffTimer > 0) this.attackSpeedBuffTimer -= timeScale;
                 if (this.comboTimer > 0) {
-                    this.comboTimer--;
+                    this.comboTimer -= timeScale;
                     if (this.comboTimer <= 0) { this.comboHitCount = 0; this.comboTargetId = null; }
                 }
-                if (this.speedBoostTimer > 0) this.speedBoostTimer--;
-                if (this.breakDmgBuffTimer > 0) this.breakDmgBuffTimer--;
-                if (this.slowDebuffTimer > 0) this.slowDebuffTimer--;
+                if (this.speedBoostTimer > 0) this.speedBoostTimer -= timeScale;
+                if (this.breakDmgBuffTimer > 0) this.breakDmgBuffTimer -= timeScale;
+                if (this.slowDebuffTimer > 0) this.slowDebuffTimer -= timeScale;
                 
-                if (this.netTrapCooldown > 0) this.netTrapCooldown--;
-                if (this.ascendArmorPiercingTimer > 0) this.ascendArmorPiercingTimer--;
-                if (this.craftGunCooldown > 0) this.craftGunCooldown--;
-                if (this.nobleDashCooldown > 0) this.nobleDashCooldown--;
-                if (this.afterimageTimer > 0) this.afterimageTimer--;
-                if (this.missTextTimer > 0) this.missTextTimer--;
-                if (this.critTextTimer > 0) this.critTextTimer--;
+                if (this.netTrapCooldown > 0) this.netTrapCooldown -= timeScale;
+                if (this.ascendArmorPiercingTimer > 0) this.ascendArmorPiercingTimer -= timeScale;
+                if (this.craftGunCooldown > 0) this.craftGunCooldown -= timeScale;
+                if (this.nobleDashCooldown > 0) this.nobleDashCooldown -= timeScale;
+                if (this.afterimageTimer > 0) this.afterimageTimer -= timeScale;
+                if (this.missTextTimer > 0) this.missTextTimer -= timeScale;
+                if (this.critTextTimer > 0) this.critTextTimer -= timeScale;
 
-                if (this.vampireSkillActiveTimer > 0) this.vampireSkillActiveTimer--;
-                if (this.vampireSkillCooldown > 0) this.vampireSkillCooldown--;
+                if (this.vampireSkillActiveTimer > 0) this.vampireSkillActiveTimer -= timeScale;
+                if (this.vampireSkillCooldown > 0) this.vampireSkillCooldown -= timeScale;
 
                 if (this.hasWeapon) {
-                    this.weaponTimer--;
+                    this.weaponTimer -= timeScale;
                     if (this.weaponTimer <= 0) this.hasWeapon = null;
                 }
 
                 if (this.isBroken) {
-                    this.brokenTimer--;
+                    this.brokenTimer -= timeScale;
                     let secondsLeft = Math.ceil(this.brokenTimer / 60);
                     let manaTextEl = document.getElementById(`p${this.id}-mana-text`);
                     if (manaTextEl && this.id <= 2) manaTextEl.innerText = `RECOVERING (${secondsLeft}s)`;
@@ -1083,15 +1083,15 @@ document.addEventListener('visibilitychange', () => { if (document.hidden) clear
                     this.velocity.x = 0;
                     this.isAttacking = false;
                 } else {
-                    this.position.x += this.velocity.x;
+                    this.position.x += this.velocity.x * timeScale;
                 }
 
-                this.position.y += this.velocity.y;
+                this.position.y += this.velocity.y * timeScale;
 
                 let landedOnPlatform = false;
                 if (this.velocity.y > 0) {
                     for (let plat of platforms) {
-                        let prevBottom = (this.position.y - this.velocity.y) + this.height;
+                        let prevBottom = (this.position.y - (this.velocity.y * timeScale)) + this.height;
                         let currBottom = this.position.y + this.height;
                         if (prevBottom <= plat.y && currBottom >= plat.y) {
                             if (this.position.x + this.width > plat.x && this.position.x < plat.x + plat.w) {
@@ -1108,7 +1108,7 @@ document.addEventListener('visibilitychange', () => { if (document.hidden) clear
                         this.velocity.y = 0;
                         this.position.y = GROUND_Y - this.height;
                     } else {
-                        this.velocity.y += GRAVITY;
+                        this.velocity.y += GRAVITY * timeScale;
                     }
                 }
 
@@ -1132,13 +1132,13 @@ document.addEventListener('visibilitychange', () => { if (document.hidden) clear
                         this.attackBox.position.x = this.position.x - w;
                         this.attackBox.width = w;
                     }
-                    this.attackTimer--;
+                    this.attackTimer -= timeScale;
                     if (this.attackTimer <= 0) { this.isAttacking = false; this.attackType = null; }
                 }
-                if (this.attackCooldown > 0) this.attackCooldown--;
+                if (this.attackCooldown > 0) this.attackCooldown -= timeScale;
             }
 
-            attack(type) {
+            attack(type){
                 if (this.health <= 0 || this.stunnedTimer > 0 || this.attackCooldown > 0 || this.isAttacking || (this.isBlocking && this.charTypeIndex !== 5)) return;
 
                 this.attackType = type;
