@@ -211,7 +211,8 @@ io.on('connection', (socket) => {
                 charIndex: 0
             }],
             status: 'waiting',
-            subMode: 'pvp_solo'
+            subMode: 'pvp_solo',
+            charSelectionMode: 'pick',
         };
 
         socket.join(roomId);
@@ -250,7 +251,19 @@ io.on('connection', (socket) => {
         io.to(room.id).emit('room_update', room);
         io.emit('room_list_update', Object.values(rooms));
     });
+    // Đổi chế độ chọn nhân vật
+    socket.on('update_char_mode', (data) => {
+        const room = rooms[socket.roomId];
+        if (!room || room.status === 'playing') return;
 
+        const player = room.players.find(p => p.id === socket.id);
+        if (!player || player.username !== room.host) return;
+
+        if (['pick', 'random'].includes(data.mode)) {
+            room.charSelectionMode = data.mode;
+            io.to(room.id).emit('room_update', room);
+        }
+    });
     // Tham gia phòng
     socket.on('join_room', (data = {}) => {
         const roomId = data.roomId;
@@ -312,7 +325,27 @@ io.on('connection', (socket) => {
             io.to(room.id).emit('room_update', room);
         }
     });
+    // Nhận index nhân vật đã chọn từ client (khi chế độ "Tùy chọn")
+    socket.on('char_selected', (data) => {
+        const room = rooms[socket.roomId];
+        if (!room || room.status === 'playing') return;
 
+        // Lưu index nhân vật
+        if (room.players[0]) room.players[0].charIndex = data.p1CharIndex;
+        if (room.players[1]) room.players[1].charIndex = data.p2CharIndex;
+
+        // Báo cả 2 máy bắt đầu game với nhân vật đã chọn
+        io.to(room.id).emit('start_game_with_chars', {
+            subMode: room.subMode,
+            p1CharIndex: data.p1CharIndex,
+            p2CharIndex: data.p2CharIndex,
+            p1SocketId: room.players[0].id,
+            p2SocketId: room.players[1] ? room.players[1].id : null
+        });
+
+        room.status = 'playing';
+        io.emit('room_list_update', Object.values(rooms));
+    });
     // Bắt đầu trận đấu
     socket.on('start_game', () => {
         const room = rooms[socket.roomId];
@@ -337,16 +370,37 @@ io.on('connection', (socket) => {
             );
         }
 
-        room.status = 'playing';
+               // Nếu chế độ là RANDOM → random nhân vật cho cả 2 và gửi luôn
+        // Nếu chế độ là PICK → gửi mode để client hiện bảng chọn
+               const charSelectionMode = room.charSelectionMode || 'pick';
 
-        io.to(room.id).emit('game_started', {
-            room,
-            subMode: room.subMode,
-            p1SocketId: room.players[0].id,
-            p2SocketId: room.players[1]
-                ? room.players[1].id
-                : null
-        });
+        if (charSelectionMode === 'random') {
+            // Chế độ RANDOM: random nhân vật và vào game luôn
+            const p1CharIndex = Math.floor(Math.random() * 6);
+            const p2CharIndex = Math.floor(Math.random() * 6);
+            room.status = 'playing';
+            io.to(room.id).emit('game_started', {
+                room,
+                subMode: room.subMode,
+                p1SocketId: room.players[0].id,
+                p2SocketId: room.players[1] ? room.players[1].id : null,
+                charSelectionMode: 'random',
+                p1CharIndex: p1CharIndex,
+                p2CharIndex: p2CharIndex
+            });
+        } else {
+            // Chế độ PICK: chỉ gửi tín hiệu để client hiện bảng chọn nhân vật
+            // Chưa đổi room.status thành 'playing' (chờ char_selected)
+            io.to(room.id).emit('game_started', {
+                room,
+                subMode: room.subMode,
+                p1SocketId: room.players[0].id,
+                p2SocketId: room.players[1] ? room.players[1].id : null,
+                charSelectionMode: 'pick',
+                p1CharIndex: 0,
+                p2CharIndex: 1
+            });
+        }
 
         io.emit('room_list_update', Object.values(rooms));
     });
