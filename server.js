@@ -475,12 +475,20 @@ io.on('connection', (socket) => {
         // Gửi cho CẢ 2 máy (io.to) để đồng bộ chính xác
         const bronze = (typeof data.bronze === 'number' && data.bronze >= 0 && data.bronze <= 9999)
             ? data.bronze : undefined;
+        const mana = (typeof data.mana === 'number' && data.mana >= 0 && data.mana <= 200)
+            ? data.mana : undefined;
+        const brokenTimer = (typeof data.brokenTimer === 'number' && data.brokenTimer >= 0 && data.brokenTimer <= 1200)
+            ? data.brokenTimer : undefined;
 
         io.to(room.id).emit('sync_health', {
             targetId: data.targetId,
             health: data.health,
             armor: data.armor,
-            bronze
+            bronze,
+            mana,
+            isBroken: typeof data.isBroken === 'boolean' ? data.isBroken : undefined,
+            brokenTimer,
+            isBlocking: typeof data.isBlocking === 'boolean' ? data.isBlocking : undefined
         });
     });
 
