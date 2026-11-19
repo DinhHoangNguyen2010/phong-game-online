@@ -473,10 +473,14 @@ io.on('connection', (socket) => {
         if (typeof data.armor !== 'number' || data.armor < 0 || data.armor > 9999) return;
 
         // Gửi cho CẢ 2 máy (io.to) để đồng bộ chính xác
+        const bronze = (typeof data.bronze === 'number' && data.bronze >= 0 && data.bronze <= 9999)
+            ? data.bronze : undefined;
+
         io.to(room.id).emit('sync_health', {
             targetId: data.targetId,
             health: data.health,
-            armor: data.armor
+            armor: data.armor,
+            bronze
         });
     });
 
@@ -497,9 +501,13 @@ io.on('connection', (socket) => {
     // Đồng bộ nhặt hộp vật phẩm (Box)
     socket.on('pickup_box', (data) => {
         if (!socket.roomId || !rooms[socket.roomId]) return;
-        // Thông báo cho máy đối phương biết box đã bị nhặt
+        const kinds = ['weapon', 'defense'];
+        const types = ['Sword', 'Hammer', 'Gun', 'Scythe', 'Armor', 'BronzeShield'];
+        if (!data || !kinds.includes(data.boxKind)) return;
+        // Thông báo cho máy đối phương: box đã bị nhặt và loại gì (để áp dụng cho nhân vật của người nhặt)
         socket.to(socket.roomId).emit('remote_box_picked', {
             boxKind: data.boxKind,
+            boxType: types.includes(data.boxType) ? data.boxType : null,
             pickerSocketId: socket.id
         });
     });
