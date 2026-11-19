@@ -2098,7 +2098,11 @@ function animate() {
                     y: player1.position.y,
                     vx: player1.velocity.x,
                     vy: player1.velocity.y,
-                    facing: player1.facing
+                    facing: player1.facing,
+                    isBlocking: player1.charTypeIndex !== 5 && keys.s && !player1.isBroken,
+                    mana: player1.mana,
+                    isBroken: player1.isBroken,
+                    brokenTimer: player1.brokenTimer
                 });
                 lastMoveSent = now;
             }
@@ -2127,7 +2131,11 @@ function animate() {
                     y: player2.position.y,
                     vx: player2.velocity.x,
                     vy: player2.velocity.y,
-                    facing: player2.facing
+                    facing: player2.facing,
+                    isBlocking: player2.isBlocking && !player2.isBroken,
+                    mana: player2.mana,
+                    isBroken: player2.isBroken,
+                    brokenTimer: player2.brokenTimer
                 });
                 lastMoveSent = now;
             }
@@ -2191,6 +2199,8 @@ function animate() {
         if (remoteFighter.attackCooldown > 0) remoteFighter.attackCooldown--;
         if (remoteFighter.stunnedTimer > 0) remoteFighter.stunnedTimer--;
         if (remoteFighter.hitFlashTimer > 0) remoteFighter.hitFlashTimer--;
+if (remoteFighter.missTextTimer > 0) remoteFighter.missTextTimer--;
+if (remoteFighter.critTextTimer > 0) remoteFighter.critTextTimer--;
         if (remoteFighter.weaponTimer > 0) {
             remoteFighter.weaponTimer--;
             if (remoteFighter.weaponTimer <= 0) remoteFighter.hasWeapon = null;
@@ -2304,7 +2314,16 @@ function animate() {
         if (onlineGameActive && gameSubMode === 'pvp_solo') {
             if (checkCollision(myFighter, oppFighter)) {
                 handleHit(myFighter, oppFighter);
-                syncDamage(oppFighter.id, oppFighter.health, oppFighter.armor, oppFighter.bronzeShieldTimer);
+                syncDamage(
+                    oppFighter.id,
+                    oppFighter.health,
+                    oppFighter.armor,
+                    oppFighter.bronzeShieldTimer,
+                    oppFighter.mana,
+                    oppFighter.isBroken,
+                    oppFighter.brokenTimer,
+                    oppFighter.isBlocking
+                );
             }
             // Nhận damage từ đối phương sẽ được server broadcast qua 'sync_health'
         } else {
@@ -2699,6 +2718,21 @@ socket.on('remote_player_move', (data) => {
         target.targetX = data.x;
         target.targetY = data.y;
         target.facing = data.facing;
+        if (typeof data.isBlocking === 'boolean') target.isBlocking = data.isBlocking;
+        if (typeof data.mana === 'number') target.mana = Math.max(0, Math.min(200, data.mana));
+        if (typeof data.isBroken === 'boolean') target.isBroken = data.isBroken;
+        if (typeof data.brokenTimer === 'number') target.brokenTimer = Math.max(0, data.brokenTimer);
+        const manaBar = document.getElementById(`p${target.id}-mana`);
+        const manaText = document.getElementById(`p${target.id}-mana-text`);
+        if (manaBar && target.id <= 2) {
+            manaBar.style.width = Math.min(100, target.mana) + '%';
+            manaBar.classList.toggle('broken', target.isBroken);
+        }
+        if (manaText && target.id <= 2) {
+            manaText.innerText = target.isBroken
+                ? `RECOVERING (${Math.ceil(target.brokenTimer / 60)}s)`
+                : (target.mana >= 100 ? 'SHIELD READY' : `SHIELD ${Math.ceil(target.mana)}%`);
+        }
     }
 });
 // 3. Nhận hành động tấn công từ đối phương
@@ -2711,8 +2745,17 @@ socket.on('remote_player_action', (data) => {
 });
 
 // 4. Đồng bộ máu (HP)
-function syncDamage(targetId, newHealth, newArmor, newBronze) {
-    socket.emit('take_damage', { targetId, health: newHealth, armor: newArmor, bronze: newBronze });
+function syncDamage(targetId, newHealth, newArmor, newBronze, newMana, newIsBroken, newBrokenTimer, newIsBlocking) {
+    socket.emit('take_damage', {
+        targetId,
+        health: newHealth,
+        armor: newArmor,
+        bronze: newBronze,
+        mana: newMana,
+        isBroken: newIsBroken,
+        brokenTimer: newBrokenTimer,
+        isBlocking: newIsBlocking
+    });
 }
 
 socket.on('sync_health', (data) => {
@@ -2724,6 +2767,21 @@ socket.on('sync_health', (data) => {
         if (typeof data.bronze === 'number') {
             target.bronzeShieldTimer = Math.min(target.bronzeShieldTimer, data.bronze);
             updateBronzeHUD(target);
+        }
+        if (typeof data.mana === 'number') target.mana = Math.max(0, Math.min(200, data.mana));
+        if (typeof data.isBroken === 'boolean') target.isBroken = data.isBroken;
+        if (typeof data.brokenTimer === 'number') target.brokenTimer = Math.max(0, data.brokenTimer);
+        if (typeof data.isBlocking === 'boolean') target.isBlocking = data.isBlocking;
+        const manaBar = document.getElementById(`p${target.id}-mana`);
+        const manaText = document.getElementById(`p${target.id}-mana-text`);
+        if (manaBar) {
+            manaBar.style.width = Math.min(100, target.mana) + '%';
+            manaBar.classList.toggle('broken', target.isBroken);
+        }
+        if (manaText) {
+            manaText.innerText = target.isBroken
+                ? `RECOVERING (${Math.ceil(target.brokenTimer / 60)}s)`
+                : (target.mana >= 100 ? 'SHIELD READY' : `SHIELD ${Math.ceil(target.mana)}%`);
         }
 
         let prefix = data.targetId === 1 ? 'p1' : 'p2';
