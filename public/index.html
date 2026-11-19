@@ -418,6 +418,10 @@ const canvas = document.getElementById('gameCanvas');
 
         let timeRemaining = 500;
 let timeScale = 1;
+// Tốc độ game: 1.0 = tốc độ gốc, tăng lên (vd 1.3) để game nhanh hơn. Logic game chạy theo thời gian thực
+// nên không còn bị chậm đi khi máy có FPS thấp.
+const GAME_SPEED = 1.2;
+let lastFrameTs = 0;
         let timerInterval;
         let shakeTime = 0, shakeIntensity = 0;
         
@@ -463,7 +467,7 @@ let timeScale = 1;
                 else if (k === 'd') keys.d = true;
                 else if (k === 'w' && !keys.w) {
                     keys.w = true;
-                    if (player2.health > 0 && player2.stunnedTimer === 0) {
+                    if (player2.health > 0 && player2.stunnedTimer <= 0) {
                         const canJump = player2.position.y >= GROUND_Y - player2.height - 2 || platforms.some(p => Math.abs(player2.position.y + player2.height - p.y) < 6 && player2.position.x + player2.width > p.x && player2.position.x < p.x + p.w);
                         if (canJump) player2.velocity.y = -15;
                         const now = Date.now();
@@ -476,7 +480,7 @@ let timeScale = 1;
                     }
                 } else if (k === 's' && !keys.s) {
                     keys.s = true;
-                    if (player2.health > 0 && player2.stunnedTimer === 0) {
+                    if (player2.health > 0 && player2.stunnedTimer <= 0) {
                         const now = Date.now();
                         p2DownPressTimes.push(now);
                         p2DownPressTimes = p2DownPressTimes.filter(t => now - t < 500);
@@ -489,7 +493,7 @@ let timeScale = 1;
                             p2DownPressTimes = []; player2.tryAfterimageSkill();
                         }
                     }
-                } else if ((k === 'o' || k === 'p') && player2.health > 0 && player2.stunnedTimer === 0) {
+                } else if ((k === 'o' || k === 'p') && player2.health > 0 && player2.stunnedTimer <= 0) {
                     if (player2.hasWeapon === 'Gun' && k === 'o') player2.shoot();
                     else player2.attack(k === 'p' ? 'kick' : 'punch');
                 }
@@ -508,7 +512,7 @@ let timeScale = 1;
                     if (e.key === 'w' || e.key === 'W') {
                         if (!keys.w) {
                             keys.w = true; 
-                            if (player1.health > 0 && player1.stunnedTimer === 0) {
+                            if (player1.health > 0 && player1.stunnedTimer <= 0) {
                                 let canJump = player1.position.y >= GROUND_Y - player1.height - 2 || platforms.some(p => Math.abs(player1.position.y + player1.height - p.y) < 6 && player1.position.x + player1.width > p.x && player1.position.x < p.x + p.w);
                                 if (canJump) player1.velocity.y = -15;
 
@@ -526,7 +530,7 @@ let timeScale = 1;
                 case 's': case 'S': 
                     if (!keys.s) {
                         keys.s = true; 
-                        if (player1.health > 0 && player1.stunnedTimer === 0) {
+                        if (player1.health > 0 && player1.stunnedTimer <= 0) {
                             let now = Date.now();
                             p1DownPressTimes.push(now);
                             p1DownPressTimes = p1DownPressTimes.filter(t => now - t < 500);
@@ -552,13 +556,13 @@ let timeScale = 1;
                     }
                     break;
                 case 'o': case 'O':
-                    if (player1.health > 0 && player1.stunnedTimer === 0) {
+                    if (player1.health > 0 && player1.stunnedTimer <= 0) {
                         if (player1.hasWeapon === 'Gun') player1.shoot();
                         else player1.attack('punch'); 
                     }
                     break;
                 case 'p': case 'P': 
-                    if (player1.health > 0 && player1.stunnedTimer === 0) player1.attack('kick'); 
+                    if (player1.health > 0 && player1.stunnedTimer <= 0) player1.attack('kick'); 
                     break;
 
                 case 'ArrowLeft': keys.ArrowLeft = true; break;
@@ -566,7 +570,7 @@ let timeScale = 1;
                 case 'ArrowUp': 
                     if (!keys.ArrowUp) {
                         keys.ArrowUp = true; 
-                        if ((gameSubMode === 'pvp_solo' || gameSubMode === 'pvp_coop') && player2.health > 0 && player2.stunnedTimer === 0) {
+                        if ((gameSubMode === 'pvp_solo' || gameSubMode === 'pvp_coop') && player2.health > 0 && player2.stunnedTimer <= 0) {
                             let canJump2 = player2.position.y >= GROUND_Y - player2.height - 2 || platforms.some(p => Math.abs(player2.position.y + player2.height - p.y) < 6 && player2.position.x + player2.width > p.x && player2.position.x < p.x + p.w);
                             if (canJump2) player2.velocity.y = -15;
 
@@ -583,7 +587,7 @@ let timeScale = 1;
                 case 'ArrowDown': 
                     if (!keys.ArrowDown) {
                         keys.ArrowDown = true; 
-                        if ((gameSubMode === 'pvp_solo' || gameSubMode === 'pvp_coop') && player2.health > 0 && player2.stunnedTimer === 0) {
+                        if ((gameSubMode === 'pvp_solo' || gameSubMode === 'pvp_coop') && player2.health > 0 && player2.stunnedTimer <= 0) {
                             let now = Date.now();
                             p2DownPressTimes.push(now);
                             p2DownPressTimes = p2DownPressTimes.filter(t => now - t < 500);
@@ -609,13 +613,13 @@ let timeScale = 1;
                     }
                     break;
                 case '-':
-                    if ((gameSubMode === 'pvp_solo' || gameSubMode === 'pvp_coop') && player2.health > 0 && player2.stunnedTimer === 0) {
+                    if ((gameSubMode === 'pvp_solo' || gameSubMode === 'pvp_coop') && player2.health > 0 && player2.stunnedTimer <= 0) {
                         if (player2.hasWeapon === 'Gun') player2.shoot();
                         else player2.attack('punch');
                     }
                     break;
                 case '=': 
-                    if ((gameSubMode === 'pvp_solo' || gameSubMode === 'pvp_coop') && player2.health > 0 && player2.stunnedTimer === 0) {
+                    if ((gameSubMode === 'pvp_solo' || gameSubMode === 'pvp_coop') && player2.health > 0 && player2.stunnedTimer <= 0) {
                         player2.attack('kick');
                     }
                     break;
@@ -660,9 +664,9 @@ document.addEventListener('visibilitychange', () => { if (document.hidden) clear
                 this.color = color; this.alpha = 1;
             }
             update() {
-                this.x += this.speedX; this.y += this.speedY;
-                if (this.gravity) this.speedY += this.gravity;
-                this.alpha -= 0.05;
+                this.x += this.speedX * timeScale; this.y += this.speedY * timeScale;
+                if (this.gravity) this.speedY += this.gravity * timeScale;
+                this.alpha -= 0.05 * timeScale;
             }
             draw() {
                 ctx.save(); ctx.globalAlpha = this.alpha; ctx.fillStyle = this.color;
@@ -684,7 +688,7 @@ document.addEventListener('visibilitychange', () => { if (document.hidden) clear
                 this.active = true;
             }
             update() {
-                this.x += this.facing === 'right' ? this.speed : -this.speed;
+                this.x += (this.facing === 'right' ? this.speed : -this.speed) * timeScale;
                 if (this.x < 0 || this.x > canvas.width) this.active = false;
             }
             draw() {
@@ -713,7 +717,7 @@ document.addEventListener('visibilitychange', () => { if (document.hidden) clear
                 this.durationTimer = 600;
             }
             update() {
-                this.durationTimer--;
+                this.durationTimer -= timeScale;
                 if (this.durationTimer <= 0) this.active = false;
             }
             draw() {
@@ -748,8 +752,9 @@ document.addEventListener('visibilitychange', () => { if (document.hidden) clear
                 this.isActive = true;
             }
             update() {
-                if (this.y + this.height < GROUND_Y) this.y += 4;
-                else this.y = GROUND_Y - this.height;
+                if (this.y + this.height < GROUND_Y) {
+                    this.y = Math.min(this.y + 4 * timeScale, GROUND_Y - this.height);
+                } else this.y = GROUND_Y - this.height;
             }
             draw() {
                 if (!this.isActive) return;
@@ -1120,7 +1125,7 @@ document.addEventListener('visibilitychange', () => { if (document.hidden) clear
                 if (this.position.x < 0) this.position.x = 0;
                 if (this.position.x + this.width > canvas.width) this.position.x = canvas.width - this.width;
 
-                if (this.isAttacking && this.stunnedTimer === 0) {
+                if (this.isAttacking && this.stunnedTimer <= 0) {
                     this.attackBox.position.y = this.position.y + (this.attackType === 'punch' ? 25 : 55);
                     let w = 0;
                     if (this.attackType === 'punch') {
@@ -1530,6 +1535,7 @@ document.getElementById('waiting-overlay').style.display = 'none';
             return baseCap + (fighter.permanentArmorBonus || 0);
         }
 
+        function setTxt(el, v) { if (el.textContent !== v) el.textContent = v; }
         function updateHUDStatusAndName(fighter, prefix) {
             let nameEl = document.getElementById(`${prefix}-name`);
             let panelEl = document.getElementById(`${prefix}-buff-panel`);
@@ -1537,10 +1543,10 @@ document.getElementById('waiting-overlay').style.display = 'none';
 
             let baseName = charTypes[fighter.charTypeIndex].name;
             if (fighter.charTypeIndex === 4 && fighter.isAscended) {
-                nameEl.innerText = `${prefix === 'p1' ? 'P1' : (gameSubMode.startsWith('bot') ? 'BOT' : 'P2')}: ${baseName} (Lên Thần)`;
+                setTxt(nameEl, `${prefix === 'p1' ? 'P1' : (gameSubMode.startsWith('bot') ? 'BOT' : 'P2')}: ${baseName} (Lên Thần)`);
                 nameEl.style.color = '#f9d423';
             } else {
-                nameEl.innerText = `${prefix === 'p1' ? 'P1' : (gameSubMode.startsWith('bot') ? 'BOT' : 'P2')}: ${baseName}`;
+                setTxt(nameEl, `${prefix === 'p1' ? 'P1' : (gameSubMode.startsWith('bot') ? 'BOT' : 'P2')}: ${baseName}`);
                 nameEl.style.color = '#fff';
             }
 
@@ -1551,7 +1557,7 @@ document.getElementById('waiting-overlay').style.display = 'none';
                 armorBarEl.style.display = 'block';
                 armorBarEl.style.width = Math.min(100, (fighter.armor / armorCapacity * 100)) + '%';
                 armorTxtEl.style.display = 'flex';
-                armorTxtEl.innerText = `GIÁP: ${Math.round(fighter.armor)}${fighter.permanentArmorBonus ? ` (+${fighter.permanentArmorBonus} buff)` : ''}`;
+                setTxt(armorTxtEl, `GIÁP: ${Math.round(fighter.armor)}${fighter.permanentArmorBonus ? ` (+${fighter.permanentArmorBonus} buff)` : ''}`);
             } else {
                 armorBarEl.style.display = 'none';
                 armorTxtEl.style.display = 'none';
@@ -1595,7 +1601,7 @@ document.getElementById('waiting-overlay').style.display = 'none';
                 if (fighter.extraBlockBonus > 0) buffDetails.push(`Đỡ đòn +${fighter.extraBlockBonus}`);
                 if (buffDetails.length) htmlContent += `<div class="skill-badge"><span>BUFF VƯỢT ẢI</span><span class="skill-cd">${buffDetails.join(' · ')}</span></div>`;
             }
-            panelEl.innerHTML = htmlContent;
+            if (panelEl._hud !== htmlContent) { panelEl._hud = htmlContent; panelEl.innerHTML = htmlContent; }
         }
 
         function updateBotAI(botFighter, target1, target2 = null) {
@@ -1660,7 +1666,7 @@ document.getElementById('waiting-overlay').style.display = 'none';
         function checkCollision(attacker, target) {
             if (
                 attacker && target && attacker.health > 0 && target.health > 0 &&
-                attacker.stunnedTimer === 0 &&
+                attacker.stunnedTimer <= 0 &&
                 attacker.isAttacking && !attacker.hasHitTarget &&
                 attacker.attackBox.position.x < target.position.x + target.width &&
                 attacker.attackBox.position.x + attacker.attackBox.width > target.position.x &&
@@ -1675,7 +1681,7 @@ document.getElementById('waiting-overlay').style.display = 'none';
 
         function checkBoxPickup(fighter, box) {
             return (
-                fighter && fighter.health > 0 && fighter.stunnedTimer === 0 && box && box.isActive &&
+                fighter && fighter.health > 0 && fighter.stunnedTimer <= 0 && box && box.isActive &&
                 fighter.position.x < box.x + box.width &&
                 fighter.position.x + fighter.width > box.x &&
                 fighter.position.y < box.y + box.height &&
@@ -2034,6 +2040,12 @@ const shouldSpawnLocally = !onlineGameActive || myPlayerRole === 1;
 function animate() {
     requestAnimationFrame(animate);
 
+    // Delta-time: bù theo thời gian thực giữa 2 khung hình
+    const frameTs = performance.now();
+    const frameDt = lastFrameTs ? Math.min(100, frameTs - lastFrameTs) : 16.667;
+    lastFrameTs = frameTs;
+    timeScale = Math.min(3, Math.max(0.25, frameDt / 16.667)) * GAME_SPEED;
+
     if (shakeTime > 0) {
         shakeTime--;
         let offsetX = (Math.random() - 0.5) * shakeIntensity * 2;
@@ -2071,7 +2083,7 @@ function animate() {
 
     if (p1Local) {
         player1.velocity.x = 0;
-        if (player1.health > 0 && player1.stunnedTimer === 0) {
+        if (player1.health > 0 && player1.stunnedTimer <= 0) {
             let p1MoveRate = player1.bonusMovementSpeedRate;
             let p1Speed = 4 * (1 + p1MoveRate) * (player1.speedBoostTimer > 0 ? 1.5 : 1.0);
             if (keys.a) { player1.velocity.x = -p1Speed; player1.facing = 'left'; }
@@ -2095,7 +2107,7 @@ function animate() {
 
     if (p2Local && p2IsHuman) {
         player2.velocity.x = 0;
-        if (player2.health > 0 && player2.stunnedTimer === 0) {
+        if (player2.health > 0 && player2.stunnedTimer <= 0) {
             let p2MoveRate = player2.bonusMovementSpeedRate;
             let p2Speed = 4 * (1 + p2MoveRate) * (player2.speedBoostTimer > 0 ? 1.5 : 1.0);
             // Online: P2 dùng A/D/S trên máy của mình. Offline: P2 dùng phím mũi tên.
@@ -2134,12 +2146,10 @@ function animate() {
     // Nhân vật của đối phương sẽ được update thông qua tọa độ nhận từ Socket (remote_player_move).
        if (!onlineGameActive || myPlayerRole === 1) {
         player1.update();
-        updateHUDStatusAndName(player1, 'p1'); // <-- THÊM DÒNG NÀY
     }
     if (gameSubMode !== 'bot_campaign') {
         if (!onlineGameActive || myPlayerRole === 2) {
             player2.update();
-            updateHUDStatusAndName(player2, 'p2'); // <-- THÊM DÒNG NÀY
         }
     }
        // Nội suy vị trí cho nhân vật đối phương (online) để di chuyển mượt
@@ -2152,7 +2162,7 @@ function animate() {
     
     if (remoteFighter) {
         // ✅ FIX: Update animation đánh cho nhân vật đối phương
-        if (remoteFighter.isAttacking && remoteFighter.stunnedTimer === 0) {
+        if (remoteFighter.isAttacking && remoteFighter.stunnedTimer <= 0) {
             remoteFighter.attackBox.position.y = remoteFighter.position.y + (remoteFighter.attackType === 'punch' ? 25 : 55);
             let w = 0;
             if (remoteFighter.attackType === 'punch') {
@@ -2220,42 +2230,27 @@ function animate() {
     allFighters.push(...enemies);
 
     allFighters.forEach(f => {
-    // Chỉ xử lý nhặt box cho nhân vật do máy này điều khiển (online)
-    // hoặc tất cả (offline)
-    const isMyFighter = !onlineGameActive || (myPlayerRole === 1 && f.id === 1) || (myPlayerRole === 2 && f.id === 2);
+        // Online: mỗi máy chỉ nhặt vật phẩm cho nhân vật CỦA MÌNH, máy kia nhận qua 'remote_box_picked'
+        const isMyFighter = !onlineGameActive || (myPlayerRole === 1 && f.id === 1) || (myPlayerRole === 2 && f.id === 2);
+        if (!isMyFighter) return;
 
-    if (currentWeaponBox && checkBoxPickup(f, currentWeaponBox)) {
-        f.hasWeapon = currentWeaponBox.type;
-        f.weaponTimer = 900;
-        f.ammo = currentWeaponBox.type === 'Gun' ? 8 : 0;
-        if (isMyFighter && onlineGameActive) {
-            socket.emit('pickup_box', { boxType: currentWeaponBox.type, boxKind: 'weapon' });
-        }
-        currentWeaponBox.isActive = false;
-        currentWeaponBox = null;
-    }
-    if (currentShieldBox && checkBoxPickup(f, currentShieldBox)) {
-        if (currentShieldBox.type === 'Armor') {
-            let addArmorVal = f.charTypeIndex === 2 ? 150 : 100;
-            let buffArmorBonus = f.permanentArmorBonus || 0;
-            f.armor = Math.min(getArmorCapacity(f), f.armor + addArmorVal + buffArmorBonus);
-        } else if (currentShieldBox.type === 'BronzeShield') {
-            let shieldVal = f.charTypeIndex === 2 ? 220 : 170;
-            f.bronzeShieldTimer = shieldVal;
-            if (f.id <= 2) {
-                let bBar = document.getElementById(`p${f.id}-bronze-shield`);
-                let bText = document.getElementById(`p${f.id}-bronze-text`);
-                if (bBar) { bBar.style.display = 'block'; bBar.style.width = '100%'; }
-                if (bText) { bText.style.display = 'flex'; bText.innerText = `KHIÊN ĐỒNG (${shieldVal} HP)`; }
+        if (currentWeaponBox && checkBoxPickup(f, currentWeaponBox)) {
+            applyBoxToFighter(f, 'weapon', currentWeaponBox.type);
+            if (onlineGameActive) {
+                socket.emit('pickup_box', { boxType: currentWeaponBox.type, boxKind: 'weapon' });
             }
+            currentWeaponBox.isActive = false;
+            currentWeaponBox = null;
         }
-        if (isMyFighter && onlineGameActive) {
-            socket.emit('pickup_box', { boxType: currentShieldBox.type, boxKind: 'defense' });
+        if (currentShieldBox && checkBoxPickup(f, currentShieldBox)) {
+            applyBoxToFighter(f, 'defense', currentShieldBox.type);
+            if (onlineGameActive) {
+                socket.emit('pickup_box', { boxType: currentShieldBox.type, boxKind: 'defense' });
+            }
+            currentShieldBox.isActive = false;
+            currentShieldBox = null;
         }
-        currentShieldBox.isActive = false;
-        currentShieldBox = null;
-    }
-});
+    });
 
     if (currentWeaponBox) { currentWeaponBox.update(); currentWeaponBox.draw(); }
     if (currentShieldBox) { currentShieldBox.update(); currentShieldBox.draw(); }
@@ -2309,7 +2304,7 @@ function animate() {
         if (onlineGameActive && gameSubMode === 'pvp_solo') {
             if (checkCollision(myFighter, oppFighter)) {
                 handleHit(myFighter, oppFighter);
-                syncDamage(oppFighter.id, oppFighter.health, oppFighter.armor);
+                syncDamage(oppFighter.id, oppFighter.health, oppFighter.armor, oppFighter.bronzeShieldTimer);
             }
             // Nhận damage từ đối phương sẽ được server broadcast qua 'sync_health'
         } else {
@@ -2527,7 +2522,41 @@ socket.on('sync_spawn_box', (data) => {
     }
 });
 // 3.1 Đồng bộ NHẶT hộp vật phẩm (khi đối phương nhặt thì xóa box bên máy mình)
+function updateBronzeHUD(f) {
+    if (f.id > 2) return;
+    const bBar = document.getElementById(`p${f.id}-bronze-shield`);
+    const bText = document.getElementById(`p${f.id}-bronze-text`);
+    const maxV = f.charTypeIndex === 2 ? 220 : 170;
+    if (f.bronzeShieldTimer > 0) {
+        if (bBar) { bBar.style.display = 'block'; bBar.style.width = Math.min(100, f.bronzeShieldTimer / maxV * 100) + '%'; }
+        if (bText) { bText.style.display = 'flex'; bText.innerText = `KHIÊN ĐỒNG (${Math.ceil(f.bronzeShieldTimer)} HP)`; }
+    } else {
+        if (bBar) bBar.style.display = 'none';
+        if (bText) bText.style.display = 'none';
+    }
+}
+
+// Áp dụng hiệu ứng nhặt vật phẩm lên một nhân vật (dùng cho cả máy mình và máy đối phương)
+function applyBoxToFighter(f, kind, type) {
+    if (!f) return;
+    if (kind === 'weapon') {
+        f.hasWeapon = type;
+        f.weaponTimer = 900;
+        f.ammo = type === 'Gun' ? 8 : 0;
+    } else if (type === 'Armor') {
+        let addArmorVal = f.charTypeIndex === 2 ? 150 : 100;
+        let buffArmorBonus = f.permanentArmorBonus || 0;
+        f.armor = Math.min(getArmorCapacity(f), f.armor + addArmorVal + buffArmorBonus);
+    } else if (type === 'BronzeShield') {
+        f.bronzeShieldTimer = f.charTypeIndex === 2 ? 220 : 170;
+        updateBronzeHUD(f);
+    }
+}
+
 socket.on('remote_box_picked', (data) => {
+    // Áp dụng vật phẩm lên nhân vật của đối phương trên máy này
+    const pickedBy = (myPlayerRole === 1) ? player2 : player1;
+    if (data.boxType) applyBoxToFighter(pickedBy, data.boxKind, data.boxType);
     if (data.boxKind === 'weapon' && currentWeaponBox) {
         currentWeaponBox.isActive = false;
         currentWeaponBox = null;
@@ -2682,8 +2711,8 @@ socket.on('remote_player_action', (data) => {
 });
 
 // 4. Đồng bộ máu (HP)
-function syncDamage(targetId, newHealth, newArmor) {
-    socket.emit('take_damage', { targetId, health: newHealth, armor: newArmor });
+function syncDamage(targetId, newHealth, newArmor, newBronze) {
+    socket.emit('take_damage', { targetId, health: newHealth, armor: newArmor, bronze: newBronze });
 }
 
 socket.on('sync_health', (data) => {
@@ -2692,6 +2721,10 @@ socket.on('sync_health', (data) => {
         // Chỉ cập nhật nếu HP server <= HP local (tránh lag rollback khi chính máy này vừa gây damage)
         target.health = Math.min(target.health, data.health);
         target.armor  = Math.min(target.armor,  data.armor);
+        if (typeof data.bronze === 'number') {
+            target.bronzeShieldTimer = Math.min(target.bronzeShieldTimer, data.bronze);
+            updateBronzeHUD(target);
+        }
 
         let prefix = data.targetId === 1 ? 'p1' : 'p2';
         let hpBar = document.getElementById(`${prefix}-health`);
