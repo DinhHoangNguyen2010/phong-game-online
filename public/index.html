@@ -2351,8 +2351,8 @@ socket.on('game_started', (data) => {
 
     // Nếu chế độ là RANDOM → vào trận ngay với nhân vật random
     if (data.charSelectionMode === 'random') {
-        selectedP1CharIndex = Math.floor(Math.random() * charTypes.length);
-        selectedP2CharIndex = Math.floor(Math.random() * charTypes.length);
+        selectedP1CharIndex = data.p1CharIndex;
+        selectedP2CharIndex = data.p2CharIndex;
         startGame(data.subMode || 'pvp_solo');
     } 
     // Nếu chế độ là TÙY CHỌN → hiện màn hình chọn nhân vật
