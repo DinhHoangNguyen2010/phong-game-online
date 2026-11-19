@@ -482,7 +482,7 @@ let timeScale = 1;
                         p2DownPressTimes = p2DownPressTimes.filter(t => now - t < 500);
                         if (player2.charTypeIndex === 4) {
                             if (p2DownPressTimes.length >= 3) { p2DownPressTimes = []; player2.tryAscend(); }
-                            else if (p2DownPressTimes.length === 2) player2.tryDeployNetTrap();
+                            else if (p2DownPressTimes.length === 2 && !(player2.hunterBulletHitCount >= 7 && !player2.isAscended)) player2.tryDeployNetTrap();
                         } else if (player2.charTypeIndex === 3 && p2DownPressTimes.length >= 2) {
                             p2DownPressTimes = []; player2.tryVampireSkill();
                         } else if (player2.charTypeIndex === 5 && p2DownPressTimes.length >= 2) {
@@ -534,7 +534,7 @@ let timeScale = 1;
                                 if (p1DownPressTimes.length >= 3) {
                                     p1DownPressTimes = [];
                                     player1.tryAscend();
-                                } else if (p1DownPressTimes.length === 2) {
+                                } else if (p1DownPressTimes.length === 2 && !(player1.hunterBulletHitCount >= 7 && !player1.isAscended)) {
                                     player1.tryDeployNetTrap();
                                 }
                             } else if (player1.charTypeIndex === 3) {
@@ -566,7 +566,7 @@ let timeScale = 1;
                 case 'ArrowUp': 
                     if (!keys.ArrowUp) {
                         keys.ArrowUp = true; 
-                        if (gameSubMode !== 'bot_campaign' && player2.health > 0 && player2.stunnedTimer === 0) {
+                        if ((gameSubMode === 'pvp_solo' || gameSubMode === 'pvp_coop') && player2.health > 0 && player2.stunnedTimer === 0) {
                             let canJump2 = player2.position.y >= GROUND_Y - player2.height - 2 || platforms.some(p => Math.abs(player2.position.y + player2.height - p.y) < 6 && player2.position.x + player2.width > p.x && player2.position.x < p.x + p.w);
                             if (canJump2) player2.velocity.y = -15;
 
@@ -583,7 +583,7 @@ let timeScale = 1;
                 case 'ArrowDown': 
                     if (!keys.ArrowDown) {
                         keys.ArrowDown = true; 
-                        if (gameSubMode !== 'bot_campaign' && player2.health > 0 && player2.stunnedTimer === 0) {
+                        if ((gameSubMode === 'pvp_solo' || gameSubMode === 'pvp_coop') && player2.health > 0 && player2.stunnedTimer === 0) {
                             let now = Date.now();
                             p2DownPressTimes.push(now);
                             p2DownPressTimes = p2DownPressTimes.filter(t => now - t < 500);
@@ -591,7 +591,7 @@ let timeScale = 1;
                                 if (p2DownPressTimes.length >= 3) {
                                     p2DownPressTimes = [];
                                     player2.tryAscend();
-                                } else if (p2DownPressTimes.length === 2) {
+                                } else if (p2DownPressTimes.length === 2 && !(player2.hunterBulletHitCount >= 7 && !player2.isAscended)) {
                                     player2.tryDeployNetTrap();
                                 }
                             } else if (player2.charTypeIndex === 3) {
@@ -609,13 +609,13 @@ let timeScale = 1;
                     }
                     break;
                 case '-':
-                    if (gameSubMode !== 'bot_campaign' && player2.health > 0 && player2.stunnedTimer === 0) {
+                    if ((gameSubMode === 'pvp_solo' || gameSubMode === 'pvp_coop') && player2.health > 0 && player2.stunnedTimer === 0) {
                         if (player2.hasWeapon === 'Gun') player2.shoot();
                         else player2.attack('punch');
                     }
                     break;
                 case '=': 
-                    if (gameSubMode !== 'bot_campaign' && player2.health > 0 && player2.stunnedTimer === 0) {
+                    if ((gameSubMode === 'pvp_solo' || gameSubMode === 'pvp_coop') && player2.health > 0 && player2.stunnedTimer === 0) {
                         player2.attack('kick');
                     }
                     break;
@@ -1289,6 +1289,7 @@ else if (myPlayerRole === 1) {
 }
 
         function startGame(subMode) {
+            if (!onlineGameActive) myPlayerRole = 1;
             gameSubMode = subMode;
             if (gameSubMode !== 'bot_campaign' && gameSubMode !== 'pvp_coop') currentWave = 1;
 
@@ -1512,7 +1513,7 @@ document.getElementById('waiting-overlay').style.display = 'none';
         function preserveProgression(oldFighter, newFighter) {
             newFighter.maxHp = oldFighter.maxHp;
             newFighter.health = newFighter.maxHp;
-            newFighter.bonusMovementSpeedRate = oldFighter.bonusMovementSpeedRate;
+            newFighter.bonusMovementSpeedRate = oldFighter.bonusMovementSpeedRate + (oldFighter.isAscended ? 0.15 : 0); // hoàn lại phạt tốc của 'Lên Thần' để không cộng dồn qua các màn
             newFighter.bonusAttackSpeedRate = oldFighter.bonusAttackSpeedRate;
             newFighter.bonusArmorPierceRate = oldFighter.bonusArmorPierceRate || 0;
             newFighter.reflectRate = oldFighter.reflectRate;
@@ -1607,6 +1608,10 @@ document.getElementById('waiting-overlay').style.display = 'none';
             } else if (target1.health <= 0) return;
 
             let dist = Math.abs(botFighter.position.x - target.position.x);
+            // Mỗi khung hình reset vận tốc ngang để bot không trượt theo quán tính cũ
+            botFighter.velocity.x = 0;
+            // Luôn quay mặt về phía mục tiêu (kể cả khi cầm súng hoặc đang đỡ đòn)
+            botFighter.facing = botFighter.position.x < target.position.x ? 'right' : 'left';
             let nearestBox = null;
             let isHard = (gameSubMode === 'bot_hard' || (gameSubMode === 'bot_campaign' && currentWave > 5) || botFighter.isBoss);
 
@@ -1630,6 +1635,7 @@ document.getElementById('waiting-overlay').style.display = 'none';
             if (botFighter.hasWeapon === 'Gun') {
                 if (dist > 120 && Math.random() < (isHard ? 0.6 : 0.3)) botFighter.shoot();
                 if (dist < 160) botFighter.velocity.x = botFighter.position.x < target.position.x ? -3 : 3;
+                else if (dist > 420) botFighter.velocity.x = botFighter.position.x < target.position.x ? 3 : -3;
                 return;
             }
 
@@ -1684,7 +1690,7 @@ document.getElementById('waiting-overlay').style.display = 'none';
             if (target.charTypeIndex === 5 && Math.random() < dodgeChance) {
                 target.missTextTimer = 30;
                 createHitParticles(target.position.x + target.width/2, target.position.y + target.height/2, '#f9d423');
-                return;
+                return false;
             }
 
             const hitDir = (target.position.x + target.width / 2) >= (attacker.position.x + attacker.width / 2) ? 1 : -1;
@@ -1719,7 +1725,10 @@ if (onlineGameActive) {
             const healthBeforeHit = target.health;
             const hasDefense = target.armor > 0 || target.bronzeShieldTimer > 0;
 
-            const fighterPierce = (attacker.charTypeIndex === 0 || (attacker.bonusArmorPierceRate && Math.random() < attacker.bonusArmorPierceRate)) && hasDefense && (Math.random() < (attacker.charTypeIndex === 0 ? 0.10 : 1.0));
+            const fighterPierce = hasDefense && (
+                (attacker.charTypeIndex === 0 && Math.random() < 0.10) ||
+                (attacker.bonusArmorPierceRate > 0 && Math.random() < attacker.bonusArmorPierceRate)
+            );
             const hunterPierce = attacker.ascendArmorPiercingTimer > 0;
 
             if (attacker.charTypeIndex === 1 && hasDefense) damage += 10;
@@ -1736,6 +1745,7 @@ if (onlineGameActive) {
                     if (bBar && target.id <= 2) bBar.style.display = 'none';
                 } else if (bBar && target.id <= 2) {
                     bBar.style.width = (target.bronzeShieldTimer / maxShieldVal * 100) + '%';
+                    if (bText) bText.innerText = `KHIÊN ĐỒNG (${Math.ceil(target.bronzeShieldTimer)} HP)`;
                 }
             } else if (target.armor > 0) {
                 target.armor = Math.max(0, target.armor - damage * targetDmgMod);
@@ -1802,7 +1812,7 @@ if (onlineGameActive) {
                 }
                 if (target.id <= 2) {
                     let manaBarEl = document.getElementById(`p${target.id}-mana`);
-                    if (manaBarEl) manaBarEl.style.width = target.mana + '%';
+                    if (manaBarEl) manaBarEl.style.width = Math.min(100, target.mana) + '%';
                 }
                 createHitParticles(midX, midY, '#00bcd4');
                 triggerScreenShake(3, 1);
@@ -1830,10 +1840,15 @@ if (onlineGameActive) {
                 if (isCrit) {
                     let critBonus = Math.floor(Math.random() * 5) + 5; 
                     baseDmg += critBonus;
-                    target.critTextTimer = 30;
                 }
 
-                applyDamageToTarget(attacker, target, baseDmg, false);
+                const landed = applyDamageToTarget(attacker, target, baseDmg, false) !== false;
+                if (!landed) {
+                    // Đối thủ né (MISS): không tính crit, combo hay hiệu ứng trúng đòn
+                    attacker.isAttacking = false;
+                    return;
+                }
+                if (isCrit) target.critTextTimer = 30;
                 createHitParticles(midX, midY, isCrit ? '#ff3838' : '#ffeb3b');
                 triggerScreenShake(isCrit ? 7 : 5, isCrit ? 3 : 2);
 
@@ -1916,6 +1931,12 @@ const shouldSpawnLocally = !onlineGameActive || myPlayerRole === 1;
                             endOverlayEl.style.display = 'flex';
                             winTextEl.innerText = `Hết giờ ở màn ${currentWave}!`;
                             nextBtnEl.style.display = 'none';
+                        } else if (gameSubMode === 'pvp_solo' || gameSubMode === 'bot_easy' || gameSubMode === 'bot_hard') {
+                            // Hết giờ: ai nhiều máu hơn thì thắng, bằng nhau mới hòa
+                            let timeoutWinner;
+                            if (player1.health > player2.health) timeoutWinner = 1;
+                            else if (player2.health > player1.health) timeoutWinner = 2;
+                            endGame(timeoutWinner);
                         } else {
                             endGame();
                         }
@@ -1931,6 +1952,7 @@ const shouldSpawnLocally = !onlineGameActive || myPlayerRole === 1;
         socket.emit('leave_room');
         onlineGameActive = false;
     }
+    myPlayerRole = 1;
             endOverlayEl.style.display = 'none';
     document.getElementById('waiting-overlay').style.display = 'none'; 
             pvpMenuOverlay.style.display = 'none';
@@ -2042,7 +2064,12 @@ function animate() {
     if (!gameActive) return;
 
     // --- PHÂN CHIA ĐIỀU KHIỂN & GỬI TỌA ĐỘ QUA SOCKET ---
-    if (myPlayerRole === 1) {
+    // --- ĐIỀU KHIỂN: xác định nhân vật nào do máy này điều khiển ---
+    const p1Local = !onlineGameActive || myPlayerRole === 1;
+    const p2Local = !onlineGameActive || myPlayerRole === 2;
+    const p2IsHuman = (gameSubMode === 'pvp_solo' || gameSubMode === 'pvp_coop');
+
+    if (p1Local) {
         player1.velocity.x = 0;
         if (player1.health > 0 && player1.stunnedTimer === 0) {
             let p1MoveRate = player1.bonusMovementSpeedRate;
@@ -2051,7 +2078,7 @@ function animate() {
             else if (keys.d) { player1.velocity.x = p1Speed; player1.facing = 'right'; }
         }
 
-           if (onlineGameActive) {
+        if (onlineGameActive) {
             const now = performance.now();
             if (now - lastMoveSent > 30) { // throttle ~33Hz
                 socket.emit('player_move', {
@@ -2064,18 +2091,23 @@ function animate() {
                 lastMoveSent = now;
             }
         }
-    } else {
+    }
+
+    if (p2Local && p2IsHuman) {
         player2.velocity.x = 0;
         if (player2.health > 0 && player2.stunnedTimer === 0) {
             let p2MoveRate = player2.bonusMovementSpeedRate;
             let p2Speed = 4 * (1 + p2MoveRate) * (player2.speedBoostTimer > 0 ? 1.5 : 1.0);
-            if ((onlineGameActive && myPlayerRole === 2 && keys.a) || (!onlineGameActive && (keys.ArrowLeft || keys.a))) { player2.velocity.x = -p2Speed; player2.facing = 'left'; }
-            else if ((onlineGameActive && myPlayerRole === 2 && keys.d) || (!onlineGameActive && (keys.ArrowRight || keys.d))) { player2.velocity.x = p2Speed; player2.facing = 'right'; }
+            // Online: P2 dùng A/D/S trên máy của mình. Offline: P2 dùng phím mũi tên.
+            const p2Left  = onlineGameActive ? keys.a : keys.ArrowLeft;
+            const p2Right = onlineGameActive ? keys.d : keys.ArrowRight;
+            if (p2Left) { player2.velocity.x = -p2Speed; player2.facing = 'left'; }
+            else if (p2Right) { player2.velocity.x = p2Speed; player2.facing = 'right'; }
 
-            player2.isBlocking = (player2.charTypeIndex === 5) ? false : (onlineGameActive && myPlayerRole === 2 ? keys.s : (keys.ArrowDown || keys.s));
+            player2.isBlocking = (player2.charTypeIndex === 5) ? false : (onlineGameActive ? keys.s : keys.ArrowDown);
         }
 
-               if (onlineGameActive) {
+        if (onlineGameActive) {
             const now = performance.now();
             if (now - lastMoveSent > 30) {
                 socket.emit('player_move', {
@@ -2096,7 +2128,7 @@ function animate() {
         updateBotAI(player2, player1);
     }
 
-       player1.isBlocking = (player1.charTypeIndex === 5) ? false : keys.s;
+    if (p1Local) player1.isBlocking = (player1.charTypeIndex === 5) ? false : keys.s;
 
     // Nếu đang chơi Offline, hoặc chơi Online nhưng đây là nhân vật CỦA MÌNH thì mới tự update vật lý.
     // Nhân vật của đối phương sẽ được update thông qua tọa độ nhận từ Socket (remote_player_move).
@@ -2166,7 +2198,7 @@ function animate() {
         if (trap.active) trap.draw();
         if (!trap.active) { traps.splice(tIdx, 1); continue; }
 
-        let targetList = trap.ownerId === 1 ? [player2, ...enemies] : [player1, ...enemies];
+        let targetList = (gameSubMode === 'pvp_coop') ? [...enemies] : (trap.ownerId === 1 ? [player2, ...enemies] : [player1, ...enemies]);
         let triggered = false;
         for (const t of targetList) {
             if (t && t.id !== trap.ownerId && t.health > 0 &&
@@ -2231,7 +2263,7 @@ function animate() {
     bullets.forEach((b, index) => {
         b.update();
         b.draw();
-        if (!b.active) { bullets.splice(index, 1); return; }
+        if (!b.active) return;
 
         let targets = [];
         if (b.ownerId === 1 || b.ownerId === 2) {
@@ -2266,6 +2298,7 @@ function animate() {
             }
         });
     });
+    bullets = bullets.filter(b => b.active);
 
     if (gameSubMode === 'pvp_solo' || gameSubMode === 'bot_easy' || gameSubMode === 'bot_hard') {
         // Xác định nhân vật do máy này điều khiển
@@ -2285,8 +2318,7 @@ function animate() {
             if (checkCollision(player2, player1)) handleHit(player2, player1);
         }
     } else if (gameSubMode === 'pvp_coop') {
-        if (checkCollision(player1, player2)) handleHit(player1, player2);
-        if (checkCollision(player2, player1)) handleHit(player2, player1);
+        // Co-op: đồng đội không gây sát thương cho nhau
         enemies.forEach(e => {
             if (checkCollision(player1, e)) handleHit(player1, e);
             if (checkCollision(player2, e)) handleHit(player2, e);
@@ -2307,8 +2339,8 @@ function animate() {
     particles.forEach((p, index) => {
         p.update();
         p.draw();
-        if (p.alpha <= 0) particles.splice(index, 1);
     });
+    particles = particles.filter(p => p.alpha > 0);
 
     if (gameSubMode === 'bot_campaign') {
         if (player1.health <= 0) endGame();
@@ -2430,7 +2462,7 @@ Fighter.prototype.shoot = function() {
     let bx = this.facing === 'right' ? this.position.x + this.width : this.position.x - 14;
     let by = this.position.y + 40;
     
-    if ((myPlayerRole === 1 && this.id === 1) || (myPlayerRole === 2 && this.id === 2)) {
+    if (onlineGameActive && ((myPlayerRole === 1 && this.id === 1) || (myPlayerRole === 2 && this.id === 2))) {
         socket.emit('player_shoot', { x: bx, y: by, facing: this.facing, ownerId: this.id });
     }
     
@@ -2441,7 +2473,7 @@ const originalAttack = Fighter.prototype.attack;
 Fighter.prototype.attack = function(type) {
     if (this.health <= 0 || this.stunnedTimer > 0 || this.attackCooldown > 0 || this.isAttacking || (this.isBlocking && this.charTypeIndex !== 5)) return;
     
-    if ((myPlayerRole === 1 && this.id === 1) || (myPlayerRole === 2 && this.id === 2)) {
+    if (onlineGameActive && ((myPlayerRole === 1 && this.id === 1) || (myPlayerRole === 2 && this.id === 2))) {
         socket.emit('player_action', { type: type, facing: this.facing });
     }
     
@@ -2469,7 +2501,7 @@ Fighter.prototype.tryDeployNetTrap = function() {
         }
     }
 
-    if ((myPlayerRole === 1 && this.id === 1) || (myPlayerRole === 2 && this.id === 2)) {
+    if (onlineGameActive && ((myPlayerRole === 1 && this.id === 1) || (myPlayerRole === 2 && this.id === 2))) {
         socket.emit('player_trap', { x: trapX, y: trapY, ownerId: this.id });
     }
 
