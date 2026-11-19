@@ -197,6 +197,10 @@ io.on('connection', (socket) => {
             return socket.emit('error_msg', 'Vui lòng đăng nhập trước!');
         }
 
+        if (socket.roomId && rooms[socket.roomId]) {
+            return socket.emit('error_msg', 'Bạn đang ở trong một phòng!');
+        }
+
         const roomId = 'room_' + Math.random().toString(36).slice(2, 11);
 
         rooms[roomId] = {
@@ -241,12 +245,14 @@ io.on('connection', (socket) => {
         if (!player || player.username !== room.host) return;
         if (!validModes.includes(subMode)) return;
 
-        room.subMode = subMode;
-        room.maxPlayers = subMode.startsWith('pve_bot') ? 1 : 2;
+        const newMaxPlayers = subMode.startsWith('pve_bot') ? 1 : 2;
 
-        if (room.players.length > room.maxPlayers) {
+        if (room.players.length > newMaxPlayers) {
             return socket.emit('error_msg', 'Phòng đang có quá nhiều người cho chế độ này!');
         }
+
+        room.subMode = subMode;
+        room.maxPlayers = newMaxPlayers;
 
         io.to(room.id).emit('room_update', room);
         io.emit('room_list_update', Object.values(rooms));
@@ -386,6 +392,7 @@ io.on('connection', (socket) => {
                // Nếu chế độ là RANDOM → random nhân vật cho cả 2 và gửi luôn
         // Nếu chế độ là PICK → gửi mode để client hiện bảng chọn
                const charSelectionMode = room.charSelectionMode || 'pick';
+        room.pickedChars = null; // reset lựa chọn nhân vật của trận trước
 
         if (charSelectionMode === 'random') {
             // Chế độ RANDOM: random nhân vật và vào game luôn
@@ -424,6 +431,7 @@ io.on('connection', (socket) => {
         if (!room || room.status !== 'playing') return;
 
         room.status = 'waiting';
+        room.pickedChars = null;
 
         room.players.forEach(p => {
             if (p.username !== room.host) {
@@ -515,6 +523,7 @@ function handleLeaveRoom(socket) {
     const room = rooms[roomId];
 
     room.players = room.players.filter(p => p.id !== socket.id);
+    room.pickedChars = null;
 
     if (room.players.length === 0) {
         delete rooms[roomId];
